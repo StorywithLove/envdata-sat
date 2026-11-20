@@ -1,4 +1,4 @@
-# China Satellite Radiation Data Platform (MVP)
+# Satellite Radiation Time-Series Service
 
 This branch begins the transition from a single-site Himawari archive script to a multi-city radiation data service.
 
@@ -29,11 +29,42 @@ python src/radiation_pipeline.py
 
 Output:
 - `data/cities/latest.json`: rolling city-point snapshot (about 24 hours).
-- `data/cities/status.json`: update time, completeness counts, failures, and provenance notes.\n- `data/daily/YYYY/MM/radiation_YYYYMMDD.csv`: one UTC calendar day for all 31 fixed cities (expected 144 rows per city for Himawari 10-minute coverage), plus a `.status.json` quality report.
+- `data/cities/status.json`: update time, completeness counts, failures, and provenance notes.
+- `data/daily/YYYY/MM/radiation_YYYYMMDD.csv`: one UTC calendar day for all 31 fixed cities (expected 144 rows per city for Himawari 10-minute coverage), plus a `.status.json` quality report.
 
 The workflow runs every 15 minutes, can be triggered manually, and runs once when the collection code/configuration or its workflow definition changes on `main`. It deploys the dashboard in the same run after refreshing the snapshot. GitHub Actions schedules are best-effort, not a hard real-time scheduler. The separate Pages workflow handles frontend-only changes.
 
-## Daily archive and custom coordinate extraction\n\nThe standalone extractor does not require PostgreSQL, JAXA credentials, or a manually maintained database. It uses the public Open-Meteo Satellite Radiation API and writes ordinary CSV and JSON files to the configured filesystem.\n\nArchive the previous complete UTC day for all fixed cities (31 cities; expected 31 × 144 = 4,464 rows):\n\n```bash\npip install requests\npython src/radiation_extract.py cities\n```\n\nArchive a specific UTC day:\n\n```bash\npython src/radiation_extract.py cities --date 2026-11-19\n```\n\nExtract a custom list of global coordinates over a historical period:\n\n```bash\npython src/radiation_extract.py custom \\\n  --coordinates-csv config/custom_locations.example.csv \\\n  --start-date 2026-11-01 --end-date 2026-11-20 \\\n  --output output/custom_radiation.csv\n```\n\nCustom coordinates use automatic satellite-source selection. Native cadence is preserved per location (10, 15, or 30 minutes, depending on coverage); the extractor does not upsample lower-frequency data to 10 minutes. Himawari fixed-city mode requires a strict 600-second cadence. A sidecar status JSON records each location's observed cadence, valid/missing counts, and failures.\n\nThe `Archive daily satellite radiation` workflow runs at 01:30 UTC for the previous UTC day and can be manually run for a specified date. GitHub Actions artifacts are retained for 30 days as a transport/test output, not permanent archival storage. For durable history, run the same script on the OCI instance with its persistent disk as the output directory; no database is needed. The output path is filesystem-based and can be redirected by the caller.\n\n## Run the API locally
+## Daily archive and custom coordinate extraction
+
+The standalone extractor does not require PostgreSQL, JAXA credentials, or a manually maintained database. It uses the public Open-Meteo Satellite Radiation API and writes ordinary CSV and JSON files to the configured filesystem.
+
+Archive the previous complete UTC day for all fixed cities (31 cities; expected 31 × 144 = 4,464 rows):
+
+```bash
+pip install requests
+python src/radiation_extract.py cities
+```
+
+Archive a specific UTC day:
+
+```bash
+python src/radiation_extract.py cities --date 2026-11-19
+```
+
+Extract a custom list of global coordinates over a historical period:
+
+```bash
+python src/radiation_extract.py custom \\
+  --coordinates-csv config/custom_locations.example.csv \\
+  --start-date 2026-11-01 --end-date 2026-11-20 \\
+  --output output/custom_radiation.csv
+```
+
+Custom coordinates use automatic satellite-source selection. Native cadence is preserved per location (10, 15, or 30 minutes, depending on coverage); the extractor does not upsample lower-frequency data to 10 minutes. Himawari fixed-city mode requires a strict 600-second cadence. A sidecar status JSON records each location's observed cadence, valid/missing counts, and failures.
+
+The `Archive daily satellite radiation` workflow runs at 01:30 UTC for the previous UTC day and can be manually run for a specified date. GitHub Actions artifacts are retained for 30 days as a transport/test output, not permanent archival storage. For durable history, run the same script on the OCI instance with its persistent disk as the output directory; no database is needed. The output path is filesystem-based and can be redirected by the caller.
+
+## Run the API locally
 
 ```bash
 pip install -r api/requirements.txt
