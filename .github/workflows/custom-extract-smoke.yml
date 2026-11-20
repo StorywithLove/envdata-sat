@@ -1,0 +1,56 @@
+name: Global custom radiation extraction smoke test
+
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "UTC date to extract (YYYY-MM-DD); leave empty for yesterday"
+        required: false
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - "src/radiation_extract.py"
+      - "config/custom_locations.example.csv"
+      - ".github/workflows/custom-extract-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: python -m pip install requests
+      - name: Set extraction date
+        id: date
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.date }}" ]; then
+            echo "value=${{ inputs.date }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=$(date -u -d 'yesterday' +%F)" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Extract global sample locations
+        run: |
+          python src/radiation_extract.py custom \
+            --coordinates-csv config/custom_locations.example.csv \
+            --start-date "${{ steps.date.outputs.value }}" \
+            --end-date "${{ steps.date.outputs.value }}" \
+            --output output/global_custom_radiation.csv
+      - name: Upload custom extraction sample
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: global-custom-radiation-${{ steps.date.outputs.value }}
+          path: |
+            output/global_custom_radiation.csv
+            output/global_custom_radiation.status.json
+          if-no-files-found: warn
+          retention-days: 30
