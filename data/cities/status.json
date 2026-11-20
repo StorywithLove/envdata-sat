@@ -1,0 +1,17 @@
+{
+  "updated_at_utc": "2026-11-20T05:19:00Z",
+  "cities_configured": 31,
+  "cities_returned": 31,
+  "records_in_window": 4464,
+  "valid_records": 551,
+  "missing_records": 3913,
+  "jaxa_fallback_records_in_window": 0,
+  "jaxa_fallback_records_this_run": 0,
+  "open_meteo_failures": [],
+  "jaxa_fallback_enabled": true,
+  "notes": [
+    "Open-Meteo values are backward-averaged native 10-minute intervals.",
+    "JAXA L2 fallback values are raw instantaneous scan samples and are not time-equivalent.",
+    "Open-Meteo and JAXA use the same Himawari-9 family; this is not independent-sensor validation."
+  ]
+}
