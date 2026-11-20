@@ -20,7 +20,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: radiation-daily-archive
+  group: satellite-radiation-collection
   cancel-in-progress: false
 
 jobs:
