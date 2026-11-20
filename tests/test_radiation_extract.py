@@ -12,6 +12,15 @@ class NativeCadenceTests(unittest.TestCase):
             [600, 600, 600],
         )
 
+    def test_himawari_missing_timestamp_is_a_gap_not_a_cadence_change(self):
+        self.assertEqual(
+            validate_native_cadence(
+                ["2026-11-19T00:00", "2026-11-19T00:10", "2026-11-19T00:30"],
+                strict_10min=True,
+            ),
+            [600, 600, 600],
+        )
+
     def test_global_fifteen_minute_native(self):
         self.assertEqual(
             validate_native_cadence(
