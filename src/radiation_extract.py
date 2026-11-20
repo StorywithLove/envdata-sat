@@ -80,7 +80,7 @@ def fetch_location(
     hourly = payload.get("hourly") or {}
     times = hourly.get("time") or []
     values = hourly.get("shortwave_radiation") or []
-    if not times or len(times) != len(values):
+    if len(times) != len(values) or (not times and not daily_city_window):
         raise ValueError(
             f"{location['station_id']}: invalid API arrays "
             f"(times={len(times)}, values={len(values)})"
@@ -104,7 +104,7 @@ def fetch_location(
             int((right - left).total_seconds())
             for left, right in zip(observed, observed[1:])
         ]
-        if not observed_deltas or 600 not in observed_deltas or any(delta <= 0 or delta % 600 != 0 for delta in observed_deltas):
+        if observed_deltas and (600 not in observed_deltas or any(delta <= 0 or delta % 600 != 0 for delta in observed_deltas)):
             raise ValueError(
                 f"{location['station_id']}: returned timestamps do not establish native 10-minute cadence; "
                 f"observed steps={sorted(set(observed_deltas))}"
@@ -147,6 +147,8 @@ def fetch_location(
         "missing_timestamp_records": sum(timestamp_missing),
         "provider_null_records": sum(value is None and not missing for value, missing in zip(values, timestamp_missing)),
         "cadences_seconds": sorted(set(cadences)),
+        "observed_time_steps_seconds": sorted(set(observed_deltas)) if daily_city_window else sorted(set(cadences)),
+        "cadence_verified": (600 in observed_deltas) if daily_city_window else True,
         "actual_model": actual_model,
         "temporal_semantics": "backward_average_interval_end" if daily_city_window else "provider_native_timestamp_semantics_not_normalized",
         "period_start_utc": start.isoformat(),
