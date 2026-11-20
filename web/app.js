@@ -1,5 +1,7 @@
 const DATA_URL = "./data/latest.json";
 const map = L.map("map").setView([35.8, 104.2], 4);
+// Keep the tile provider's credit, drop Leaflet's own badge from the corner.
+map.attributionControl.setPrefix(false);
 
 // Base map: Tianditu renders China's official boundaries (OpenStreetMap does
 // not — it draws South Tibet as India). The browser key below is public by
