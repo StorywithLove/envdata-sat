@@ -1,4 +1,4 @@
-# China Satellite Radiation Data Platform (MVP)
+# Satellite Radiation Time-Series Service
 
 This branch begins the transition from a single-site Himawari archive script to a multi-city radiation data service.
 
@@ -13,7 +13,7 @@ This branch begins the transition from a single-site Himawari archive script to 
 
 ## Data semantics and caveats
 
-Open-Meteo's `shortwave_radiation` is GHI in W/m². The pipeline requests native satellite samples using `hourly_native=true`; the Himawari-9 product has a native 10-minute cadence. The data source has a latency of roughly 30 minutes.
+Open-Meteo's `shortwave_radiation` is GHI in W/m². The pipeline requests native satellite samples using `temporal_resolution=native`; the fixed China-city collector explicitly selects `models=jma_jaxa_himawari`, whose native cadence is 10 minutes. The custom global extractor uses `models=satellite_radiation_seamless` and preserves the selected provider's native 10/15/30-minute cadence. Both paths validate timestamp intervals and reject silent hourly fallback. The data source has a latency of roughly 30 minutes.
 
 JAXA P-Tree L2 `SWR` is a raw scan sample. The current fallback extracts the nearest grid cell from the corresponding scan file and labels it `fallback_raw_instant_not_time_equivalent`. It is useful for identifying a likely missing observation, but must not be silently treated as the same physical time average as the Open-Meteo record. A later processing stage should implement and validate scan-time and interval averaging correction before these records are used for quantitative model evaluation.
 
@@ -30,8 +30,39 @@ python src/radiation_pipeline.py
 Output:
 - `data/cities/latest.json`: rolling city-point snapshot (about 24 hours).
 - `data/cities/status.json`: update time, completeness counts, failures, and provenance notes.
+- `data/daily/YYYY/MM/radiation_YYYYMMDD.csv`: one UTC calendar day for all 31 fixed cities (expected 144 rows per city for Himawari 10-minute coverage), plus a `.status.json` quality report.
 
 The workflow runs every 15 minutes, can be triggered manually, and runs once when the collection code/configuration or its workflow definition changes on `main`. It deploys the dashboard in the same run after refreshing the snapshot. GitHub Actions schedules are best-effort, not a hard real-time scheduler. The separate Pages workflow handles frontend-only changes.
+
+## Daily archive and custom coordinate extraction
+
+The standalone extractor does not require PostgreSQL, JAXA credentials, or a manually maintained database. It uses the public Open-Meteo Satellite Radiation API and writes ordinary CSV and JSON files to the configured filesystem.
+
+Archive the previous complete UTC day for all fixed cities (31 cities; expected 31 × 144 = 4,464 rows):
+
+```bash
+pip install requests
+python src/radiation_extract.py cities
+```
+
+Archive a specific UTC day:
+
+```bash
+python src/radiation_extract.py cities --date 2026-11-19
+```
+
+Extract a custom list of global coordinates over a historical period:
+
+```bash
+python src/radiation_extract.py custom \\
+  --coordinates-csv config/custom_locations.example.csv \\
+  --start-date 2026-11-01 --end-date 2026-11-20 \\
+  --output output/custom_radiation.csv
+```
+
+Custom coordinates use automatic satellite-source selection. Native cadence is preserved per location (10, 15, or 30 minutes, depending on coverage); the extractor does not upsample lower-frequency data to 10 minutes. Himawari fixed-city mode requires a strict 600-second cadence. A sidecar status JSON records each location's observed cadence, valid/missing counts, and failures.
+
+The `Archive daily satellite radiation` workflow runs at 01:30 UTC for the previous UTC day and can be manually run for a specified date. GitHub Actions artifacts are retained for 30 days as a transport/test output, not permanent archival storage. For durable history, run the same script on the OCI instance with its persistent disk as the output directory; no database is needed. The output path is filesystem-based and can be redirected by the caller.
 
 ## Run the API locally
 

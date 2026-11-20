@@ -1,0 +1,53 @@
+name: Archive daily satellite radiation
+
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "UTC date to archive (YYYY-MM-DD); leave empty for yesterday"
+        required: false
+        type: string
+  schedule:
+    # Archive the previous UTC day after the satellite product's normal latency.
+    - cron: "30 1 * * *"
+  push:
+    branches: [main]
+    paths:
+      - "src/radiation_extract.py"
+      - "config/cities.json"
+      - ".github/workflows/archive-daily.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: radiation-daily-archive
+  cancel-in-progress: false
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip requests
+      - name: Extract previous UTC day
+        if: ${{ github.event_name == 'schedule' || inputs.date == '' }}
+        run: python src/radiation_extract.py cities
+      - name: Extract selected UTC day
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.date != '' }}
+        run: python src/radiation_extract.py cities --date "${{ inputs.date }}"
+      - name: Upload daily CSV and quality report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: radiation-daily-${{ inputs.date || 'previous-utc-day' }}
+          path: |
+            data/daily/**/*.csv
+            data/daily/**/*.status.json
+          if-no-files-found: warn
+          retention-days: 30
