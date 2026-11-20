@@ -84,7 +84,11 @@ def extract_jaxa_pixels(nc_path: Path, cities: list[dict[str, Any]]) -> dict[str
     return extracted
 
 def fill_gaps_with_jaxa(rows: list[dict[str, Any]], cities: list[dict[str, Any]]) -> int:
-    missing_times = sorted({parse_time(r["time_utc"]) for r in rows if r["ghi_wm2"] is None})
+    # Limit automatic FTP repair to the most recent hour; older gaps remain visible
+    # in status/data and can be handled by a dedicated backfill workflow.
+    recent_cutoff = utc_now() - timedelta(hours=1)
+    missing_times = sorted({parse_time(r["time_utc"]) for r in rows
+                            if r["ghi_wm2"] is None and parse_time(r["time_utc"]) >= recent_cutoff})
     if not missing_times:
         return 0
     rows_by_key = {(r["city_id"], r["time_utc"]): r for r in rows}
@@ -168,7 +172,12 @@ def main() -> None:
     merged = {}
     for row in load_existing() + collected:
         if parse_time(row["time_utc"]) >= cutoff:
-            merged[(row["city_id"], row["time_utc"])] = row
+            key = (row["city_id"], row["time_utc"])
+            previous = merged.get(key)
+            # Never replace a previously valid observation with a later null/missing row.
+            if previous is not None and previous.get("ghi_wm2") is not None and row.get("ghi_wm2") is None:
+                continue
+            merged[key] = row
     records = sorted(merged.values(), key=lambda r: (r["time_utc"], r["city_id"]))
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     payload = {"generated_at_utc": now.isoformat().replace("+00:00", "Z"),
