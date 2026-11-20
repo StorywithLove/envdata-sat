@@ -18,7 +18,10 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from radiation_extract import FIELDS, fetch_location, load_cities, parse_utc_timestamp
+try:
+    from .radiation_extract import FIELDS, fetch_location, load_cities, parse_utc_timestamp
+except ImportError:  # Direct execution: python src/radiation_pipeline.py
+    from radiation_extract import FIELDS, fetch_location, load_cities, parse_utc_timestamp
 
 ROOT = Path(__file__).resolve().parents[1]
 DAILY_DIR = ROOT / "data" / "daily"
