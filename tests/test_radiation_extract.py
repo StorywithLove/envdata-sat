@@ -1,5 +1,8 @@
 import unittest
-from src.radiation_extract import validate_native_cadence
+from datetime import date, datetime, timedelta, timezone
+from unittest.mock import Mock, patch
+
+from src.radiation_extract import fetch_location, validate_native_cadence
 
 
 class NativeCadenceTests(unittest.TestCase):
@@ -46,15 +49,6 @@ class NativeCadenceTests(unittest.TestCase):
             )
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
-from datetime import date, datetime, timedelta, timezone
-from unittest.mock import Mock, patch
-from src.radiation_extract import fetch_location
-
-
 class DailyBackwardAverageWindowTests(unittest.TestCase):
     @patch("src.radiation_extract.requests.get")
     def test_daily_city_export_uses_144_interval_end_labels(self, get):
@@ -90,3 +84,7 @@ class DailyBackwardAverageWindowTests(unittest.TestCase):
         self.assertEqual(rows[1]["ghi_wm2"], "")
         self.assertEqual(rows[1]["quality_flag"], "missing")
         self.assertEqual(summary["temporal_semantics"], "backward_average_interval_end")
+
+
+if __name__ == "__main__":
+    unittest.main()
