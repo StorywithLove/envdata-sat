@@ -230,8 +230,10 @@ def main() -> None:
     current_day_status: dict[str, Any] | None = None
     refreshed: list[date] = []
     last_blocker = ""
+    transport_failures: list[dict[str, str]] = []
     for day in days:
         fetched, summaries, failures = fetch_day(day, cities)
+        transport_failures.extend(failures)
         csv_path, status_path = daily_paths(day)
         existing = read_csv(csv_path)
         if day == today:
@@ -310,10 +312,16 @@ def main() -> None:
     if current_day_status is not None:
         atomic_json(SNAPSHOT_STATUS_FILE, current_day_status)
     if not refreshed:
-        # Staying green while collecting nothing is exactly how the dashboard
-        # froze for a day. Surface it as a failed run instead.
-        LOG.error("No day was refreshed this run: %s", last_blocker or "no data published")
-        raise SystemExit(1)
+        detail = last_blocker or "no data published"
+        if transport_failures:
+            # Requests actually broke: that is a failure, not a quiet feed.
+            LOG.error("No day was refreshed this run: %s", detail)
+            raise SystemExit(1)
+        # The provider has simply not published this period yet. Staying green
+        # keeps a lagging feed from mailing a failure every hour, but the run
+        # still shows up as an annotated warning in the Actions summary.
+        LOG.warning("No new radiation data this run: %s", detail)
+        print(f"::warning title=Satellite feed lagging::{detail}")
 
 
 if __name__ == "__main__":
