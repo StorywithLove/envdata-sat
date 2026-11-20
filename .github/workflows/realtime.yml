@@ -54,8 +54,19 @@ jobs:
           else
             git commit -m "data: refresh city satellite radiation snapshot"
             # Rebase over concurrent documentation/config commits before pushing.
-            git pull --rebase origin main
-            git push
+            for attempt in 1 2 3 4 5; do
+              git fetch origin main
+              git rebase origin/main
+              if git push origin HEAD:main; then
+                break
+              fi
+              echo "Push raced with another writer; retrying ($attempt/5)."
+              sleep $((attempt * 2))
+              if [ "$attempt" -eq 5 ]; then
+                echo "Unable to push realtime snapshot after 5 attempts."
+                exit 1
+              fi
+            done
           fi
       - name: Prepare dashboard data
         run: |
