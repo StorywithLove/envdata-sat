@@ -39,6 +39,13 @@ def parse_date(value: str) -> date:
         raise argparse.ArgumentTypeError(f"Invalid date {value!r}; expected YYYY-MM-DD") from exc
 
 
+def parse_utc_timestamp(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
 def validate_native_cadence(times: list[str], strict_10min: bool) -> list[int]:
     parsed = [datetime.fromisoformat(t.replace("Z", "+00:00")) for t in times]
     deltas = [int((right - left).total_seconds()) for left, right in zip(parsed, parsed[1:])]
@@ -54,6 +61,9 @@ def validate_native_cadence(times: list[str], strict_10min: bool) -> list[int]:
 def fetch_location(
     location: dict[str, Any], start: date, end: date, model: str,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    strict_10min = model == "jma_jaxa_himawari"
+    daily_city_window = strict_10min and start == end
+    api_end = end + timedelta(days=1) if daily_city_window else end
     params = {
         "latitude": location["latitude"],
         "longitude": location["longitude"],
@@ -61,7 +71,7 @@ def fetch_location(
         "models": model,
         "temporal_resolution": "native",
         "start_date": start.isoformat(),
-        "end_date": end.isoformat(),
+        "end_date": api_end.isoformat(),
         "timezone": "UTC",
     }
     response = requests.get(API_URL, params=params, timeout=90)
@@ -70,20 +80,46 @@ def fetch_location(
     hourly = payload.get("hourly") or {}
     times = hourly.get("time") or []
     values = hourly.get("shortwave_radiation") or []
-    if not times or len(times) != len(values):
+    if len(times) != len(values) or (not times and not daily_city_window):
         raise ValueError(
             f"{location['station_id']}: invalid API arrays "
             f"(times={len(times)}, values={len(values)})"
         )
-    strict_10min = model == "jma_jaxa_himawari"
-    cadences = validate_native_cadence(times, strict_10min=strict_10min)
-    if strict_10min and start == end:
-        expected_start = datetime.combine(start, datetime.min.time(), tzinfo=timezone.utc)
-        expected_last = expected_start + timedelta(minutes=1430)
-        first = datetime.fromisoformat(times[0].replace("Z", "+00:00")).replace(tzinfo=timezone.utc)
-        last = datetime.fromisoformat(times[-1].replace("Z", "+00:00")).replace(tzinfo=timezone.utc)
-        if len(times) != 144 or first != expected_start or last != expected_last:
-            raise ValueError("{}: expected 144 timestamps, received {} from {} to {}".format(location["station_id"], len(times), first.isoformat(), last.isoformat()))
+    if daily_city_window:
+        day_start = datetime.combine(start, datetime.min.time(), tzinfo=timezone.utc)
+        day_end = day_start + timedelta(days=1)
+        expected_first = day_start + timedelta(minutes=10)
+        provider_values: dict[datetime, Any] = {}
+        for timestamp, value in zip(times, values):
+            parsed = parse_utc_timestamp(timestamp)
+            if day_start < parsed <= day_end:
+                if parsed in provider_values:
+                    raise ValueError(f"{location['station_id']}: duplicate provider timestamp {parsed.isoformat()}")
+                if int((parsed - day_start).total_seconds()) % 600 != 0:
+                    raise ValueError(f"{location['station_id']}: timestamp is not aligned to the 10-minute UTC grid: {parsed.isoformat()}")
+                provider_values[parsed] = value
+
+        observed = sorted(provider_values)
+        observed_deltas = [
+            int((right - left).total_seconds())
+            for left, right in zip(observed, observed[1:])
+        ]
+        if observed_deltas and (600 not in observed_deltas or any(delta <= 0 or delta % 600 != 0 for delta in observed_deltas)):
+            raise ValueError(
+                f"{location['station_id']}: returned timestamps do not establish native 10-minute cadence; "
+                f"observed steps={sorted(set(observed_deltas))}"
+            )
+
+        expected_times = [
+            expected_first + timedelta(minutes=10 * index) for index in range(144)
+        ]
+        timestamp_missing = [timestamp not in provider_values for timestamp in expected_times]
+        times = [timestamp.isoformat().replace("+00:00", "Z") for timestamp in expected_times]
+        values = [provider_values.get(timestamp) for timestamp in expected_times]
+        cadences = [600] * 144
+    else:
+        timestamp_missing = [False] * len(times)
+        cadences = validate_native_cadence(times, strict_10min=strict_10min)
     actual_model = payload.get("model") or model
     rows = []
     for timestamp, value, cadence in zip(times, values, cadences):
@@ -102,14 +138,21 @@ def fetch_location(
             "model_requested": model,
             "temporal_resolution_seconds": cadence,
             "source": actual_model,
-            "quality_flag": "missing" if value is None else "valid",
+            "quality_flag": ("provider_timestamp_missing" if timestamp_missing[len(rows)] else "provider_returned_null") if value is None else "valid",
         })
     summary = {
         "station_id": location["station_id"],
         "records": len(rows),
         "valid_records": sum(row["ghi_wm2"] != "" for row in rows),
+        "missing_timestamp_records": sum(timestamp_missing),
+        "provider_null_records": sum(value is None and not missing for value, missing in zip(values, timestamp_missing)),
         "cadences_seconds": sorted(set(cadences)),
+        "observed_time_steps_seconds": sorted(set(observed_deltas)) if daily_city_window else sorted(set(cadences)),
+        "cadence_verified": (600 in observed_deltas) if daily_city_window else True,
         "actual_model": actual_model,
+        "temporal_semantics": "backward_average_interval_end" if daily_city_window else "provider_native_timestamp_semantics_not_normalized",
+        "period_start_utc": start.isoformat(),
+        "period_end_utc": end.isoformat(),
     }
     return rows, summary
 
