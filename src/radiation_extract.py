@@ -39,6 +39,10 @@ def parse_date(value: str) -> date:
         raise argparse.ArgumentTypeError(f"Invalid date {value!r}; expected YYYY-MM-DD") from exc
 
 
+def utc_today() -> date:
+    return datetime.now(timezone.utc).date()
+
+
 def parse_utc_timestamp(value: str) -> datetime:
     parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     if parsed.tzinfo is None:
@@ -63,7 +67,12 @@ def fetch_location(
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     strict_10min = model == "jma_jaxa_himawari"
     daily_city_window = strict_10min and start == end
-    api_end = end + timedelta(days=1) if daily_city_window else end
+    api_end = end
+    if daily_city_window:
+        # A single-day window asks one extra day ahead so the provider emits the
+        # 24:00 interval-end label. The archive rejects any end_date after the
+        # current UTC day ("out of allowed range"), so never request the future.
+        api_end = min(end + timedelta(days=1), utc_today())
     params = {
         "latitude": location["latitude"],
         "longitude": location["longitude"],

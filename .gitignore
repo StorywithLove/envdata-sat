@@ -208,3 +208,6 @@ __marimo__/
 
 # Generated satellite raster products are stored outside Git history.
 data/grid/
+
+# Dashboard data copy is produced at deploy time by the Pages workflows.
+web/data/

@@ -1,6 +1,6 @@
 import unittest
 
-from src.radiation_pipeline import merge_rows
+from src.radiation_pipeline import has_valid_values, merge_rows
 
 
 def row(value, quality="valid", source="jma_jaxa_himawari"):
@@ -45,6 +45,19 @@ class HourlyUpsertTests(unittest.TestCase):
         )
         self.assertEqual(len(merged), 1)
         self.assertEqual(merged[0]["ghi_wm2"], 110.0)
+
+
+class AllNullDayGuardTests(unittest.TestCase):
+    """A provider day with no measurements must never be written to disk."""
+
+    def test_empty_batch_has_no_valid_values(self):
+        self.assertFalse(has_valid_values([]))
+
+    def test_all_null_batch_has_no_valid_values(self):
+        self.assertFalse(has_valid_values([row("", "provider_timestamp_missing")] * 144))
+
+    def test_single_measurement_counts(self):
+        self.assertTrue(has_valid_values([row("", "provider_returned_null"), row(0.0)]))
 
 
 if __name__ == "__main__":

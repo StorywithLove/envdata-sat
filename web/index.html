@@ -13,7 +13,12 @@
     .panel{background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;min-width:0}
     .panel h2{font-size:15px;margin:0;padding:14px 16px;border-bottom:1px solid #e8edf3}
     #map{height:620px}.side{display:flex;flex-direction:column;min-height:620px}
-    #chart{width:100%;height:250px;padding:12px}.meta{padding:12px 16px;color:#64748b;font-size:12px;line-height:1.7}
+    /* Chart.js needs a parent with a definite height, otherwise the canvas
+       grows every resize pass and the panel stretches to tens of thousands of
+       pixels. */
+    .chart-box{position:relative;height:250px;margin:12px 0}
+    .chart-box canvas{position:absolute;inset:0;width:100%;height:100%}
+    .meta{padding:12px 16px;color:#64748b;font-size:12px;line-height:1.7}
     .city-list{overflow:auto;max-height:300px}.city{width:100%;border:0;border-bottom:1px solid #edf1f5;background:#fff;text-align:left;padding:10px 14px;display:flex;justify-content:space-between;gap:12px;cursor:pointer}
     .city:hover,.city.active{background:#eef6ff}.city strong{font-weight:600}.value{font-variant-numeric:tabular-nums}
     .legend{padding:10px 14px;font-size:12px;color:#475569;border-top:1px solid #edf1f5}
@@ -28,7 +33,7 @@
   <section class="panel"><h2>城市辐射空间分布</h2><div id="map"></div><div class="legend">辐射强度：<span class="dot" style="background:#2563eb"></span>低 <span class="dot" style="background:#16a34a"></span>中 <span class="dot" style="background:#f59e0b"></span>高 <span class="dot" style="background:#dc2626"></span>很高</div></section>
   <section class="panel side">
     <h2 id="selected-title">城市时间序列</h2>
-    <canvas id="chart"></canvas>
+    <div class="chart-box"><canvas id="chart"></canvas></div>
     <div id="selected-meta" class="meta">点击地图上的城市查看最近24小时序列。</div>
     <h2>省会城市最新值</h2>
     <div id="city-list" class="city-list"></div>

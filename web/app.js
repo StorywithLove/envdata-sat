@@ -7,6 +7,9 @@ let chart;
 const markers = new Map();
 let selectedCity = null;
 const fmt = value => value == null ? "缺测" : `${Math.round(value)} W/m²`;
+const fmtTime = iso => iso ? new Date(iso).toLocaleString("zh-CN",{timeZone:"Asia/Shanghai",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}) : "未知";
+let windowEnd = null;
+let lagHours = null;
 function color(value) {
   if (value == null) return "#94a3b8";
   if (value < 150) return "#2563eb";
@@ -18,11 +21,17 @@ function selectCity(city, rows) {
   selectedCity = city.city_id;
   document.getElementById("selected-title").textContent = `${city.city} · 最近24小时`;
   document.getElementById("selected-meta").textContent =
-    `来源：${city.source}；质量标记：${city.quality_flag}；时间：${city.time_utc}`;
+    `来源：${city.source}；质量标记：${city.quality_flag}；时间：${city.time_utc}` +
+    (windowEnd ? `；数据截至 ${fmtTime(windowEnd)}（滞后 ${lagHours == null ? "未知" : lagHours.toFixed(1)} 小时）` : "");
   document.querySelectorAll(".city").forEach(el => el.classList.toggle("active", el.dataset.id === selectedCity));
   const points = rows.filter(r => r.city_id === selectedCity).sort((a,b)=>a.time_utc.localeCompare(b.time_utc));
   const labels = points.map(r => new Date(r.time_utc).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",timeZone:"Asia/Shanghai"}));
   const values = points.map(r => r.ghi_wm2);
+  if (typeof Chart === "undefined") {
+    // CDN blocked: keep the map/list usable instead of aborting the whole render.
+    document.getElementById("selected-meta").textContent += "；图表库加载失败，仅显示最新值。";
+    return;
+  }
   if (chart) chart.destroy();
   chart = new Chart(document.getElementById("chart"), {
     type:"line",
@@ -57,7 +66,12 @@ function render(payload) {
     list.append(button);
   });
   const stamp=payload.generated_at_utc ? new Date(payload.generated_at_utc).toLocaleString("zh-CN") : "未知";
-  document.getElementById("status").textContent=`快照更新时间：${stamp}；有效城市：${latest.size} / 31；数据点：${rows.length}`;
+  windowEnd = payload.window_end_utc || null;
+  lagHours = payload.data_lag_hours == null ? null : Number(payload.data_lag_hours);
+  const windowText = payload.window_start_utc && payload.window_end_utc
+    ? `窗口：${fmtTime(payload.window_start_utc)} → ${fmtTime(payload.window_end_utc)}（数据滞后 ${lagHours == null ? "未知" : lagHours.toFixed(1)} 小时）；`
+    : "";
+  document.getElementById("status").textContent=`${windowText}快照更新时间：${stamp}；有效城市：${latest.size} / 31；数据点：${rows.length}`;
   const first=latest.get("wuhan") || latest.values().next().value;
   if(first) selectCity(first,rows);
 }

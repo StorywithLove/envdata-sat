@@ -77,6 +77,11 @@ def merge_rows(existing: list[dict[str, Any]], fetched: list[dict[str, Any]]) ->
     return sorted(merged.values(), key=lambda row: (row["time_utc"], row["station_id"]))
 
 
+def has_valid_values(rows: list[dict[str, Any]]) -> bool:
+    """True when the batch carries at least one real measurement."""
+    return any(row.get("ghi_wm2", "") not in ("", None) for row in rows)
+
+
 def is_day_complete(day: date, cities: list[dict[str, Any]]) -> bool:
     csv_path, status_path = daily_paths(day)
     rows = read_csv(csv_path)
@@ -223,6 +228,8 @@ def main() -> None:
 
     all_daily_rows: dict[date, list[dict[str, Any]]] = {}
     current_day_status: dict[str, Any] | None = None
+    refreshed: list[date] = []
+    last_blocker = ""
     for day in days:
         fetched, summaries, failures = fetch_day(day, cities)
         csv_path, status_path = daily_paths(day)
@@ -235,10 +242,17 @@ def main() -> None:
                 row for row in fetched
                 if earliest_refresh < parse_utc_timestamp(row["time_utc"]) <= latest_completed
             ]
+        if not has_valid_values(fetched):
+            # An all-null day must never be persisted. It would later satisfy the
+            # 144-row completeness check and be frozen without any real values.
+            LOG.warning("Provider published no values for %s; preserving any existing files", day)
+            last_blocker = f"provider returned only nulls for {day} ({len(failures)} request failures)"
+            continue
         merged = merge_rows(existing, fetched)
         if not merged:
             if failures or day == today:
                 LOG.warning("No elapsed records available for %s; preserving any existing files", day)
+                last_blocker = f"no elapsed records for {day} ({len(failures)} request failures)"
                 continue
             raise RuntimeError(f"No records produced for {day}")
         write_csv_atomic(csv_path, merged)
@@ -246,6 +260,7 @@ def main() -> None:
         status = summarize_day(day, merged, cities, summaries, failures, generated_at)
         atomic_json(status_path, status)
         all_daily_rows[day] = merged
+        refreshed.append(day)
         if day == today:
             current_day_status = status
         LOG.info(
@@ -254,18 +269,37 @@ def main() -> None:
         )
 
     # Keep the dashboard's lightweight rolling 24-hour view; the daily CSVs
-    # remain the authoritative history.
-    cutoff = now - timedelta(hours=24)
-    latest_rows = []
-    for day in [today - timedelta(days=1), today]:
+    # remain the authoritative history. The window is anchored to the newest
+    # published value, not to wall-clock time: the provider lags, and a
+    # now-anchored window silently truncates the curve while still claiming
+    # "last 24 hours".
+    source: list[dict[str, Any]] = []
+    for offset in (2, 1, 0):
+        day = today - timedelta(days=offset)
         csv_path, _ = daily_paths(day)
-        source_rows = all_daily_rows.get(day, read_csv(csv_path))
-        for row in source_rows:
-            if parse_utc_timestamp(row["time_utc"]) >= cutoff:
-                latest_rows.append(dashboard_record(row))
+        source.extend(all_daily_rows.get(day) or read_csv(csv_path))
+    published = [
+        parse_utc_timestamp(row["time_utc"])
+        for row in source
+        if row.get("ghi_wm2", "") not in ("", None)
+    ]
+    window_end = max(published) if published else now
+    cutoff = window_end - timedelta(hours=24)
+    latest_rows = [
+        dashboard_record(row)
+        for row in source
+        if cutoff <= parse_utc_timestamp(row["time_utc"]) <= window_end
+    ]
     latest_rows.sort(key=lambda row: (row["time_utc"], row["city_id"]))
+    # Report the window that is actually populated, not the one that was asked for.
+    window_start = (
+        parse_utc_timestamp(latest_rows[0]["time_utc"]) if latest_rows else cutoff
+    )
     payload = {
         "generated_at_utc": now.isoformat().replace("+00:00", "Z"),
+        "window_start_utc": window_start.isoformat().replace("+00:00", "Z"),
+        "window_end_utc": window_end.isoformat().replace("+00:00", "Z"),
+        "data_lag_hours": round((now - window_end).total_seconds() / 3600, 1) if published else None,
         "provider": "Open-Meteo Satellite Radiation API",
         "variable": "shortwave_radiation",
         "unit": "W/m²",
@@ -275,6 +309,11 @@ def main() -> None:
     atomic_json(LATEST_FILE, payload)
     if current_day_status is not None:
         atomic_json(SNAPSHOT_STATUS_FILE, current_day_status)
+    if not refreshed:
+        # Staying green while collecting nothing is exactly how the dashboard
+        # froze for a day. Surface it as a failed run instead.
+        LOG.error("No day was refreshed this run: %s", last_blocker or "no data published")
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

@@ -145,5 +145,56 @@ class DailyBackwardAverageWindowTests(unittest.TestCase):
         self.assertEqual(summary["valid_records"], 48)
 
 
+class ApiDateRangeTests(unittest.TestCase):
+    """The provider rejects any end_date after the current UTC day."""
+
+    @staticmethod
+    def _response(day_start, points):
+        timestamps = [
+            (day_start + timedelta(minutes=10 * index)).strftime("%Y-%m-%dT%H:%M")
+            for index in range(points)
+        ]
+        response = Mock()
+        response.json.return_value = {
+            "model": "jma_jaxa_himawari",
+            "hourly": {"time": timestamps, "shortwave_radiation": [0.0] * points},
+        }
+        return response
+
+    @patch("src.radiation_extract.utc_today")
+    @patch("src.radiation_extract.requests.get")
+    def test_current_day_never_requests_a_future_end_date(self, get, today):
+        today.return_value = date(2026, 11, 20)
+        get.return_value = self._response(datetime(2026, 11, 20, tzinfo=timezone.utc), 145)
+        location = {
+            "station_id": "wuhan", "station_name": "Wuhan", "province": "Hubei",
+            "latitude": 30.59, "longitude": 114.30,
+        }
+
+        rows, _ = fetch_location(
+            location, date(2026, 11, 20), date(2026, 11, 20), "jma_jaxa_himawari",
+        )
+
+        self.assertEqual(get.call_args.kwargs["params"]["end_date"], "2026-11-20")
+        self.assertEqual(len(rows), 144)
+
+    @patch("src.radiation_extract.utc_today")
+    @patch("src.radiation_extract.requests.get")
+    def test_previous_day_still_extends_one_day_for_the_2400_label(self, get, today):
+        today.return_value = date(2026, 11, 20)
+        get.return_value = self._response(datetime(2026, 11, 19, tzinfo=timezone.utc), 289)
+        location = {
+            "station_id": "wuhan", "station_name": "Wuhan", "province": "Hubei",
+            "latitude": 30.59, "longitude": 114.30,
+        }
+
+        rows, _ = fetch_location(
+            location, date(2026, 11, 19), date(2026, 11, 19), "jma_jaxa_himawari",
+        )
+
+        self.assertEqual(get.call_args.kwargs["params"]["end_date"], "2026-11-20")
+        self.assertEqual(rows[-1]["time_utc"], "2026-11-20T00:00:00Z")
+
+
 if __name__ == "__main__":
     unittest.main()
