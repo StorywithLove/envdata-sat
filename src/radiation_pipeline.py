@@ -77,6 +77,21 @@ def merge_rows(existing: list[dict[str, Any]], fetched: list[dict[str, Any]]) ->
     return sorted(merged.values(), key=lambda row: (row["time_utc"], row["station_id"]))
 
 
+def is_day_complete(day: date, cities: list[dict[str, Any]]) -> bool:
+    csv_path, _ = daily_paths(day)
+    rows = read_csv(csv_path)
+    expected_ids = {city["station_id"] for city in cities}
+    if len(rows) != len(expected_ids) * 144:
+        return False
+    grouped: dict[str, set[str]] = {station_id: set() for station_id in expected_ids}
+    for row in rows:
+        station_id = row.get("station_id")
+        if station_id not in grouped:
+            return False
+        grouped[station_id].add(row.get("time_utc", ""))
+    return all(len(times) == 144 for times in grouped.values())
+
+
 def summarize_day(
     day: date,
     rows: list[dict[str, Any]],
@@ -183,12 +198,14 @@ def main() -> None:
     cities = load_cities()
 
     days = [today]
-    # Re-fetch yesterday during the first three UTC hours to catch delayed data
-    # and recover a previous day's missed hourly workflow run.
-    if now.hour < 3:
-        days.insert(0, today - timedelta(days=1))
+    # Re-fetch yesterday only if its daily CSV is incomplete. This catches a
+    # missed final-hour run without doubling API requests on normal days.
+    yesterday = today - timedelta(days=1)
+    if not is_day_complete(yesterday, cities):
+        days.insert(0, yesterday)
 
     all_daily_rows: dict[date, list[dict[str, Any]]] = {}
+    current_day_status: dict[str, Any] | None = None
     for day in days:
         fetched, summaries, failures = fetch_day(day, cities)
         csv_path, status_path = daily_paths(day)
@@ -206,6 +223,8 @@ def main() -> None:
         status = summarize_day(day, merged, cities, summaries, failures, generated_at)
         atomic_json(status_path, status)
         all_daily_rows[day] = merged
+        if day == today:
+            current_day_status = status
         LOG.info(
             "%s: %s records, %s valid, %s provider failures",
             day, status["records"], status["valid_records"], len(failures),
@@ -231,15 +250,8 @@ def main() -> None:
         "records": latest_rows,
     }
     atomic_json(LATEST_FILE, payload)
-    current_status = summarize_day(
-        today,
-        all_daily_rows.get(today, read_csv(daily_paths(today)[0])),
-        cities,
-        {},
-        [],
-        payload["generated_at_utc"],
-    )
-    atomic_json(SNAPSHOT_STATUS_FILE, current_status)
+    if current_day_status is not None:
+        atomic_json(SNAPSHOT_STATUS_FILE, current_day_status)
 
 
 if __name__ == "__main__":
