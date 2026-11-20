@@ -59,6 +59,8 @@ class DailyBackwardAverageWindowTests(unittest.TestCase):
         ]
         values = [0.0] * len(timestamps)
         values[2] = None
+        timestamps.pop(3)  # Provider omitted the 00:30 interval-end timestamp.
+        values.pop(3)
         response = Mock()
         response.json.return_value = {
             "model": "jma_jaxa_himawari",
@@ -82,7 +84,11 @@ class DailyBackwardAverageWindowTests(unittest.TestCase):
         self.assertEqual(rows[0]["temporal_resolution_seconds"], 600)
         self.assertEqual(rows[0]["ghi_wm2"], 0.0)
         self.assertEqual(rows[1]["ghi_wm2"], "")
-        self.assertEqual(rows[1]["quality_flag"], "missing")
+        self.assertEqual(rows[1]["quality_flag"], "provider_returned_null")
+        self.assertEqual(rows[2]["ghi_wm2"], "")
+        self.assertEqual(rows[2]["quality_flag"], "provider_timestamp_missing")
+        self.assertEqual(summary["missing_timestamp_records"], 1)
+        self.assertEqual(summary["provider_null_records"], 1)
         self.assertEqual(summary["temporal_semantics"], "backward_average_interval_end")
 
 
