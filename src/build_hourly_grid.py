@@ -83,10 +83,18 @@ def read_china_window(path: Path):
         lon_idx = np.where((lon >= CHINA_BOUNDS["west"]) & (lon <= CHINA_BOUNDS["east"]))[0]
         if not len(lat_idx) or not len(lon_idx):
             raise ValueError("JAXA grid does not intersect the configured China bounding box")
-        # Normalize raster orientation: north-to-south rows, west-to-east columns.
-        lat_idx = lat_idx[np.argsort(lat[lat_idx])[::-1]]
-        lon_idx = lon_idx[np.argsort(lon[lon_idx])]
-        window = np.ma.asarray(swr[np.ix_(lat_idx, lon_idx)], dtype=np.float32)
+        # Read a contiguous NetCDF hyperslab first, then reorder in NumPy.
+        # This avoids relying on backend-specific multidimensional fancy indexing.
+        lat_start, lat_end = int(lat_idx.min()), int(lat_idx.max())
+        lon_start, lon_end = int(lon_idx.min()), int(lon_idx.max())
+        window = np.ma.asarray(
+            swr[lat_start:lat_end + 1, lon_start:lon_end + 1], dtype=np.float32
+        )
+        lat_order = np.argsort(lat[lat_idx])[::-1]
+        lon_order = np.argsort(lon[lon_idx])
+        lat_idx = lat_idx[lat_order]
+        lon_idx = lon_idx[lon_order]
+        window = window[np.ix_(lat_idx - lat_start, lon_idx - lon_start)]
         return lat[lat_idx], lon[lon_idx], window
 
 
