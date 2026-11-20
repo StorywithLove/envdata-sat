@@ -28,17 +28,18 @@ const terrainBase = L.layerGroup([tiandituLayer("ter"), tiandituLayer("cta")]);
 const amapBase = L.tileLayer(AMAP_TILE, {
   subdomains: "1234", maxZoom: 18, attribution: "&copy; 高德地图",
 });
-vectorBase.addTo(map);
+// Terrain is the default: radiation correlates strongly with relief.
+terrainBase.addTo(map);
 L.control.layers(
-  { "天地图·矢量": vectorBase, "天地图·影像": imageBase, "天地图·地形": terrainBase, "高德地图": amapBase },
+  { "天地图·地形": terrainBase, "天地图·矢量": vectorBase, "天地图·影像": imageBase, "高德地图": amapBase },
   null, { position: "topleft" },
 ).addTo(map);
 // A disabled or over-quota key must not leave the page with a blank map.
 let baseFellBack = false;
-vectorBase.eachLayer(layer => layer.on("tileerror", () => {
+terrainBase.eachLayer(layer => layer.on("tileerror", () => {
   if (baseFellBack) return;
   baseFellBack = true;
-  map.removeLayer(vectorBase);
+  map.removeLayer(terrainBase);
   amapBase.addTo(map);
 }));
 let chart;
