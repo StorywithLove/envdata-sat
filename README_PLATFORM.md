@@ -1,114 +1,49 @@
 # Satellite Radiation Time-Series Service
 
-This branch begins the transition from a single-site Himawari archive script to a multi-city radiation data service.
+A standalone GitHub-based satellite radiation data collector and lightweight visualization project. It does not depend on OCI, a hosted database, Docker, or a manually maintained external database.
 
-## Current MVP scope
+## Core data products
 
-- 31 mainland provincial-level administrative-center cities.
-- Open-Meteo Satellite Radiation API as the primary city-point source.
-- Native satellite temporal resolution (Himawari-9: 10 minutes).
-- Optional JAXA P-Tree FTP fallback for null/missing Open-Meteo samples in the latest hour.
-- A read-only FastAPI service over the latest rolling snapshot.
-- No PostgreSQL dependency.
+1. **Fixed China stations** — 31 mainland provincial-level administrative-center cities, collected daily from the Himawari-9 native 10-minute product. Each UTC calendar day is stored as one CSV plus a JSON quality report:
+   `data/daily/YYYY/MM/radiation_YYYYMMDD.csv`.
+2. **Custom global coordinates** — provide a CSV of latitude/longitude and a date range; the extractor preserves the selected source's native cadence (for example 10, 15, or 30 minutes) rather than upsampling it.
+3. **Latest snapshot and dashboard** — the realtime workflow refreshes `data/cities/latest.json` and status metadata for the Web GIS dashboard.
 
-## Data semantics and caveats
+Both extraction modes use the same Open-Meteo satellite radiation API and validate returned timestamps. The fixed Himawari mode requires 600-second cadence.
 
-Open-Meteo's `shortwave_radiation` is GHI in W/m². The pipeline requests native satellite samples using `temporal_resolution=native`; the fixed China-city collector explicitly selects `models=jma_jaxa_himawari`, whose native cadence is 10 minutes. The custom global extractor uses `models=satellite_radiation_seamless` and preserves the selected provider's native 10/15/30-minute cadence. Both paths validate timestamp intervals and reject silent hourly fallback. The data source has a latency of roughly 30 minutes.
+## Daily time semantics
 
-JAXA P-Tree L2 `SWR` is a raw scan sample. The current fallback extracts the nearest grid cell from the corresponding scan file and labels it `fallback_raw_instant_not_time_equivalent`. It is useful for identifying a likely missing observation, but must not be silently treated as the same physical time average as the Open-Meteo record. A later processing stage should implement and validate scan-time and interval averaging correction before these records are used for quantitative model evaluation.
+Open-Meteo's Himawari `shortwave_radiation` values are backward-averaged intervals. A UTC calendar-day CSV for date D therefore contains 144 interval-end labels from D 00:10 through D+1 00:00 UTC. For example, the D+1 00:00 label represents the interval D 23:50–D+1 00:00. The extractor requests the following date as an API boundary, then selects only those 144 interval ends belonging to D.
 
-Open-Meteo's Himawari product and JAXA P-Tree FTP both originate from the JMA/JAXA Himawari-9 data family. They are alternate processing/access paths, not independent satellite observations.
+Missing values remain missing. The extractor does not interpolate, fill with zero, or disguise missing observations as valid nighttime zeros. The sidecar quality report records valid/missing counts, source model, and cadence.
 
-## Run collection locally
+## Run locally
 
 ```bash
-pip install requests numpy netCDF4
-# Optional: configure H8_USERNAME and H8_PASSWORD for JAXA FTP fallback.
-python src/radiation_pipeline.py
-```
-
-Output:
-- `data/cities/latest.json`: rolling city-point snapshot (about 24 hours).
-- `data/cities/status.json`: update time, completeness counts, failures, and provenance notes.
-- `data/daily/YYYY/MM/radiation_YYYYMMDD.csv`: one UTC calendar day for all 31 fixed cities (expected 144 rows per city for Himawari 10-minute coverage), plus a `.status.json` quality report.
-
-The workflow runs every 15 minutes, can be triggered manually, and runs once when the collection code/configuration or its workflow definition changes on `main`. It deploys the dashboard in the same run after refreshing the snapshot. GitHub Actions schedules are best-effort, not a hard real-time scheduler. The separate Pages workflow handles frontend-only changes.
-
-## Daily archive and custom coordinate extraction
-
-The standalone extractor does not require PostgreSQL, JAXA credentials, or a manually maintained database. It uses the public Open-Meteo Satellite Radiation API and writes ordinary CSV and JSON files to the configured filesystem.
-
-Archive the previous complete UTC day for all fixed cities (31 cities; expected 31 × 144 = 4,464 rows):
-
-```bash
-pip install requests
-python src/radiation_extract.py cities
-```
-
-Archive a specific UTC day:
-
-```bash
+python -m pip install requests
 python src/radiation_extract.py cities --date 2026-11-19
 ```
 
-Extract a custom list of global coordinates over a historical period:
+Custom coordinates:
 
 ```bash
-python src/radiation_extract.py custom \\
-  --coordinates-csv config/custom_locations.example.csv \\
-  --start-date 2026-11-01 --end-date 2026-11-20 \\
+python src/radiation_extract.py custom \
+  --coordinates-csv config/custom_locations.example.csv \
+  --start-date 2026-11-01 --end-date 2026-11-20 \
   --output output/custom_radiation.csv
 ```
 
-Custom coordinates use automatic satellite-source selection. Native cadence is preserved per location (10, 15, or 30 minutes, depending on coverage); the extractor does not upsample lower-frequency data to 10 minutes. Himawari fixed-city mode requires a strict 600-second cadence. A sidecar status JSON records each location's observed cadence, valid/missing counts, and failures.
+## GitHub Actions and storage
 
-The `Archive daily satellite radiation` workflow runs at 01:30 UTC for the previous UTC day and can be manually run for a specified date. GitHub Actions artifacts are retained for 30 days as a transport/test output, not permanent archival storage. For durable history, run the same script on the OCI instance with its persistent disk as the output directory; no database is needed. The output path is filesystem-based and can be redirected by the caller.
+- The daily workflow runs at 01:30 UTC for the previous UTC day.
+- Daily CSV and quality-report files are committed to this repository; a 30-day Actions Artifact is retained as a convenience copy.
+- The intended working-tree retention is one year. Automated deletion is deliberately not enabled until the monthly transfer to `StorywithLove/envdata-archive` is implemented and verified; archive confirmation must precede deletion.
+- Git commits retain historical blobs even after files are deleted from the working tree. A one-year working-tree policy alone does not prune Git history. No history rewrite is performed automatically.
 
-## Run the API locally
+## Optional local raster experiment
 
-```bash
-pip install -r api/requirements.txt
-uvicorn api.main:app --host 0.0.0.0 --port 8000
-```
+`src/build_hourly_grid.py` is an optional, manually invoked local experiment for producing an approximate hourly raster from JAXA L2 scans. It is not part of the daily point-data archive and is not equivalent to the Open-Meteo backward-averaged product until scan-time correction is implemented and validated.
 
-Endpoints:
-- `GET /health`
-- `GET /api/v1/status`
-- `GET /api/v1/cities`
-- `GET /api/v1/radiation/point?city=wuhan`
-- Optional UTC filters: `start=2026-11-20T00:00:00Z&end=2026-11-20T12:00:00Z`
+## Dashboard
 
-## Optional GitHub secrets
-
-- `H8_USERNAME`
-- `H8_PASSWORD`
-
-These are optional and are only used for the legacy JAXA FTP fallback in the realtime snapshot pipeline. The daily CSV archive and custom coordinate extractor use the public Open-Meteo API and require no credentials. PostgreSQL variables such as `DB_HOST` and `DB_PWD` are not used.
-
-## Publish the static dashboard
-
-The frontend is in `web/` and can be deployed with the Pages workflow. After merging this branch, open **Settings → Pages** and set the build/deployment source to **GitHub Actions**. The workflow copies the latest city snapshot into the static site and deploys the map dashboard. The dashboard currently shows city-point values and time series; the full-resolution raster/COG grid layer is a subsequent milestone.
-
-## China gridded raster generation (local/OCI worker)
-
-The first raster-processing component is available as `src/build_hourly_grid.py`. It downloads the six expected 10-minute JAXA L2 SWR scans for one UTC hour, crops the China window (70–140°E, 15–55°N), and writes a compressed GeoTIFF/COG candidate plus a JSON sidecar.
-
-```bash
-pip install -r grid-requirements.txt
-export H8_USERNAME="..."
-export H8_PASSWORD="..."
-python src/build_hourly_grid.py --date 20261120 --hour 3
-```
-
-By default it processes the latest completed UTC hour (one-hour safety delay). It requires at least four scans and, by default, at least four valid samples per pixel. Output is written under `data/grid/hourly/YYYY/MM/DD/` and is intentionally excluded from Git history. The same builder is exposed through the manual **Build hourly China radiation raster** Actions workflow; its output is uploaded as a short-lived (7-day) artifact for inspection, not used as permanent storage.
-
-**Scientific caveat:** this is an approximate hourly mean of instantaneous L2 scans. It is not scan-time corrected and is not directly equivalent to Open-Meteo's backward-averaged GHI. Metadata records the scan list and this limitation. Do not use it for quantitative cross-source evaluation until the temporal correction is implemented and validated.
-
-The COG output is the raster-processing milestone, not yet a hosted GIS layer. A persistent object-storage bucket and a tile-serving endpoint (for example, TiTiler) are still needed before the frontend can overlay the national grid. The raster workflow is intentionally manual until a durable object-storage destination is configured; it does not push large imagery into Git. Large raster files should not be committed to this Git repository.
-
-## Next milestones
-
-1. Validate city coverage, completeness, and Open-Meteo/JAXA overlap over several days.
-2. Correct JAXA scan-time and temporal averaging semantics before quantitative gap filling.
-3. Publish the API on a small service host.
-4. Add the China raster/COG ingestion path and a MapLibre-based GIS frontend with a time slider.
+The frontend is in `web/` and is deployed with the GitHub Pages workflow. Configure **Settings → Pages → Build and deployment → Source → GitHub Actions**.
