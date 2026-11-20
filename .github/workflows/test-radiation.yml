@@ -1,0 +1,29 @@
+name: Radiation extraction tests
+
+on:
+  pull_request:
+    paths:
+      - "src/radiation_extract.py"
+      - "tests/**"
+      - ".github/workflows/test-radiation.yml"
+  push:
+    branches: [main]
+    paths:
+      - "src/radiation_extract.py"
+      - "tests/**"
+      - ".github/workflows/test-radiation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install requests
+      - run: python -m py_compile src/radiation_extract.py
+      - run: python -m unittest discover -s tests -v
