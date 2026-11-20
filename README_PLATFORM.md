@@ -58,6 +58,23 @@ These are only used for JAXA FTP fallback. Open-Meteo collection does not requir
 
 The frontend is in `web/` and can be deployed with the Pages workflow. After merging this branch, open **Settings → Pages** and set the build/deployment source to **GitHub Actions**. The workflow copies the latest city snapshot into the static site and deploys the map dashboard. The dashboard currently shows city-point values and time series; the full-resolution raster/COG grid layer is a subsequent milestone.
 
+## China gridded raster generation (local/OCI worker)
+
+The first raster-processing component is available as `src/build_hourly_grid.py`. It downloads the six expected 10-minute JAXA L2 SWR scans for one UTC hour, crops the China window (70–140°E, 15–55°N), and writes a compressed GeoTIFF/COG candidate plus a JSON sidecar.
+
+```bash
+pip install -r grid-requirements.txt
+export H8_USERNAME="..."
+export H8_PASSWORD="..."
+python src/build_hourly_grid.py --date 20261120 --hour 3
+```
+
+By default it processes the latest completed UTC hour (one-hour safety delay). It requires at least four scans and, by default, at least four valid samples per pixel. Output is written under `data/grid/hourly/YYYY/MM/DD/` and is intentionally excluded from Git history.
+
+**Scientific caveat:** this is an approximate hourly mean of instantaneous L2 scans. It is not scan-time corrected and is not directly equivalent to Open-Meteo's backward-averaged GHI. Metadata records the scan list and this limitation. Do not use it for quantitative cross-source evaluation until the temporal correction is implemented and validated.
+
+The COG output is the raster-processing milestone, not yet a hosted GIS layer. A persistent object-storage bucket and a tile-serving endpoint (for example, TiTiler) are still needed before the frontend can overlay the national grid. Large raster files should not be committed to this Git repository.
+
 ## Next milestones
 
 1. Validate city coverage, completeness, and Open-Meteo/JAXA overlap over several days.
