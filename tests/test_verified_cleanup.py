@@ -50,6 +50,11 @@ class VerifiedCleanupTests(unittest.TestCase):
         self.assertEqual(len(removed), 56)
         self.assertEqual(list(self.source_dir.iterdir()), [])
 
+    def test_month_inside_one_year_retention_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "one-year retention"):
+            cleanup_month(self.month, self.manifest_path, self.data_root, today=date(2026, 11, 20))
+        self.assertEqual(len(list(self.source_dir.iterdir())), 56)
+
     def test_hash_mismatch_prevents_any_deletion(self):
         first_csv = self.source_dir / "radiation_20260201.csv"
         first_csv.write_text("tampered", encoding="utf-8")
