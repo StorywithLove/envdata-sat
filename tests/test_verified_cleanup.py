@@ -59,7 +59,7 @@ class VerifiedCleanupTests(unittest.TestCase):
         first_csv = self.source_dir / "radiation_20260201.csv"
         first_csv.write_text("tampered", encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "SHA-256"):
-            cleanup_month(self.month, self.manifest_path, self.data_root)
+            cleanup_month(self.month, self.manifest_path, self.data_root, today=date(2027, 4, 1))
         self.assertEqual(len(list(self.source_dir.iterdir())), 56)
 
 
