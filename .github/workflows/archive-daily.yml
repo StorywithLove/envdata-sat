@@ -8,7 +8,6 @@ on:
         required: false
         type: string
   schedule:
-    # Archive the previous UTC day after the satellite product's normal latency.
     - cron: "30 1 * * *"
   push:
     branches: [main]
@@ -18,7 +17,7 @@ on:
       - ".github/workflows/archive-daily.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: radiation-daily-archive
@@ -30,6 +29,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -41,7 +42,20 @@ jobs:
       - name: Extract selected UTC day
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.date != '' }}
         run: python src/radiation_extract.py cities --date "${{ inputs.date }}"
-      - name: Upload daily CSV and quality report
+      - name: Commit daily CSV and quality report
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/daily/
+          if git diff --cached --quiet; then
+            echo "No daily data changes to commit."
+            exit 0
+          fi
+          git commit -m "Archive satellite radiation for ${{ inputs.date || 'previous UTC day' }}"
+          git pull --rebase origin main
+          git push origin HEAD:main
+      - name: Upload daily CSV and quality report (30-day convenience copy)
         if: always()
         uses: actions/upload-artifact@v4
         with:
