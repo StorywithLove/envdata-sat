@@ -88,18 +88,38 @@ def fetch_location(
     if daily_city_window:
         day_start = datetime.combine(start, datetime.min.time(), tzinfo=timezone.utc)
         day_end = day_start + timedelta(days=1)
-        selected = [
-            (timestamp, value) for timestamp, value in zip(times, values)
-            if day_start < parse_utc_timestamp(timestamp) <= day_end
-        ]
-        times = [item[0] for item in selected]
-        values = [item[1] for item in selected]
-        first = parse_utc_timestamp(times[0]) if times else None
-        last = parse_utc_timestamp(times[-1]) if times else None
         expected_first = day_start + timedelta(minutes=10)
-        if len(times) != 144 or first != expected_first or last != day_end:
-            raise ValueError("{}: expected 144 backward-averaged labels from {} to {}; received {} from {} to {}".format(location["station_id"], expected_first.isoformat(), day_end.isoformat(), len(times), first.isoformat() if first else "none", last.isoformat() if last else "none"))
-    cadences = validate_native_cadence(times, strict_10min=strict_10min)
+        provider_values: dict[datetime, Any] = {}
+        for timestamp, value in zip(times, values):
+            parsed = parse_utc_timestamp(timestamp)
+            if day_start < parsed <= day_end:
+                if parsed in provider_values:
+                    raise ValueError(f"{location['station_id']}: duplicate provider timestamp {parsed.isoformat()}")
+                if int((parsed - day_start).total_seconds()) % 600 != 0:
+                    raise ValueError(f"{location['station_id']}: timestamp is not aligned to the 10-minute UTC grid: {parsed.isoformat()}")
+                provider_values[parsed] = value
+
+        observed = sorted(provider_values)
+        observed_deltas = [
+            int((right - left).total_seconds())
+            for left, right in zip(observed, observed[1:])
+        ]
+        if not observed_deltas or 600 not in observed_deltas or any(delta <= 0 or delta % 600 != 0 for delta in observed_deltas):
+            raise ValueError(
+                f"{location['station_id']}: returned timestamps do not establish native 10-minute cadence; "
+                f"observed steps={sorted(set(observed_deltas))}"
+            )
+
+        expected_times = [
+            expected_first + timedelta(minutes=10 * index) for index in range(144)
+        ]
+        timestamp_missing = [timestamp not in provider_values for timestamp in expected_times]
+        times = [timestamp.isoformat().replace("+00:00", "Z") for timestamp in expected_times]
+        values = [provider_values.get(timestamp) for timestamp in expected_times]
+        cadences = [600] * 144
+    else:
+        timestamp_missing = [False] * len(times)
+        cadences = validate_native_cadence(times, strict_10min=strict_10min)
     actual_model = payload.get("model") or model
     rows = []
     for timestamp, value, cadence in zip(times, values, cadences):
@@ -118,12 +138,14 @@ def fetch_location(
             "model_requested": model,
             "temporal_resolution_seconds": cadence,
             "source": actual_model,
-            "quality_flag": "missing" if value is None else "valid",
+            "quality_flag": ("provider_timestamp_missing" if timestamp_missing[len(rows)] else "provider_returned_null") if value is None else "valid",
         })
     summary = {
         "station_id": location["station_id"],
         "records": len(rows),
         "valid_records": sum(row["ghi_wm2"] != "" for row in rows),
+        "missing_timestamp_records": sum(timestamp_missing),
+        "provider_null_records": sum(value is None and not missing for value, missing in zip(values, timestamp_missing)),
         "cadences_seconds": sorted(set(cadences)),
         "actual_model": actual_model,
         "temporal_semantics": "backward_average_interval_end" if daily_city_window else "provider_native_timestamp_semantics_not_normalized",
