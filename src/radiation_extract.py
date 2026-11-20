@@ -39,6 +39,13 @@ def parse_date(value: str) -> date:
         raise argparse.ArgumentTypeError(f"Invalid date {value!r}; expected YYYY-MM-DD") from exc
 
 
+def parse_utc_timestamp(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
 def validate_native_cadence(times: list[str], strict_10min: bool) -> list[int]:
     parsed = [datetime.fromisoformat(t.replace("Z", "+00:00")) for t in times]
     deltas = [int((right - left).total_seconds()) for left, right in zip(parsed, parsed[1:])]
@@ -83,12 +90,12 @@ def fetch_location(
         day_end = day_start + timedelta(days=1)
         selected = [
             (timestamp, value) for timestamp, value in zip(times, values)
-            if day_start < datetime.fromisoformat(timestamp.replace("Z", "+00:00")).astimezone(timezone.utc) <= day_end
+            if day_start < parse_utc_timestamp(timestamp) <= day_end
         ]
         times = [item[0] for item in selected]
         values = [item[1] for item in selected]
-        first = datetime.fromisoformat(times[0].replace("Z", "+00:00")).astimezone(timezone.utc) if times else None
-        last = datetime.fromisoformat(times[-1].replace("Z", "+00:00")).astimezone(timezone.utc) if times else None
+        first = parse_utc_timestamp(times[0]) if times else None
+        last = parse_utc_timestamp(times[-1]) if times else None
         expected_first = day_start + timedelta(minutes=10)
         if len(times) != 144 or first != expected_first or last != day_end:
             raise ValueError("{}: expected 144 backward-averaged labels from {} to {}; received {} from {} to {}".format(location["station_id"], expected_first.isoformat(), day_end.isoformat(), len(times), first.isoformat() if first else "none", last.isoformat() if last else "none"))
