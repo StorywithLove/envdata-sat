@@ -36,13 +36,14 @@ python src/radiation_extract.py custom \
 ## GitHub Actions and storage
 
 - The daily workflow runs at 01:30 UTC for the previous UTC day.
-- Daily CSV and quality-report files are committed to this repository; a 30-day Actions Artifact is retained as a convenience copy.
-- The intended working-tree retention is one year. Automated deletion is deliberately not enabled until the monthly transfer to `StorywithLove/envdata-archive` is implemented and verified; archive confirmation must precede deletion.
-- Git commits retain historical blobs even after files are deleted from the working tree. A one-year working-tree policy alone does not prune Git history. No history rewrite is performed automatically.
+- Daily CSV and quality-report files are committed directly to this repository under `data/daily/YYYY/MM/`.
+- The rolling city snapshot and status are maintained under `data/cities/`; `data/cities/latest.json` is copied to `web/data/latest.json` for the dashboard.
+- The GitHub Pages workflow deploys the dashboard independently of the historical CSV storage.
+- There is no external Archive repository, archive-transfer handshake, or automatic deletion of historical daily CSV files. The repository's `data/daily/` is the canonical retained dataset. Deleting a file from the working tree would not erase its historical Git blobs; no history rewrite is performed.
 
 ## Optional local raster experiment
 
-`src/build_hourly_grid.py` is an optional, manually invoked local experiment for producing an approximate hourly raster from JAXA L2 scans. It is not part of the daily point-data archive and is not equivalent to the Open-Meteo backward-averaged product until scan-time correction is implemented and validated.
+`src/build_hourly_grid.py` is an optional, manually invoked local experiment for producing an approximate hourly raster from JAXA L2 scans. It is not part of the daily point-data pipeline and is not equivalent to the Open-Meteo backward-averaged product until scan-time correction is implemented and validated.
 
 ## Dashboard
 
