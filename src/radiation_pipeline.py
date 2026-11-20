@@ -91,13 +91,22 @@ def is_day_complete(day: date, cities: list[dict[str, Any]]) -> bool:
         return False
     if status.get("locations_succeeded") != len(expected_ids) or status.get("locations_failed") or status.get("failures"):
         return False
+    # Recheck provider nulls briefly after midnight because late publication can
+    # turn a prior null into a value; after that, genuine missing data is retained.
+    if status.get("missing_records", 0) > 0 and datetime.now(timezone.utc).hour < 3:
+        return False
     grouped: dict[str, set[str]] = {station_id: set() for station_id in expected_ids}
     for row in rows:
         station_id = row.get("station_id")
         if station_id not in grouped:
             return False
         grouped[station_id].add(row.get("time_utc", ""))
-    return all(len(times) == 144 for times in grouped.values())
+    expected_start = datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc)
+    expected_times = {
+        (expected_start + timedelta(minutes=10 * index)).isoformat().replace("+00:00", "Z")
+        for index in range(1, 145)
+    }
+    return all(times == expected_times for times in grouped.values())
 
 
 def summarize_day(
@@ -219,11 +228,17 @@ def main() -> None:
         csv_path, status_path = daily_paths(day)
         existing = read_csv(csv_path)
         if day == today:
-            fetched = [row for row in fetched if parse_utc_timestamp(row["time_utc"]) <= latest_completed]
+            # Normally six new interval ends arrive each hour. Re-read the
+            # preceding hour as overlap so provider publication delays are repaired.
+            earliest_refresh = latest_completed - timedelta(hours=2)
+            fetched = [
+                row for row in fetched
+                if earliest_refresh < parse_utc_timestamp(row["time_utc"]) <= latest_completed
+            ]
         merged = merge_rows(existing, fetched)
         if not merged:
-            if failures:
-                LOG.error("No records available for %s; preserving any existing files", day)
+            if failures or day == today:
+                LOG.warning("No elapsed records available for %s; preserving any existing files", day)
                 continue
             raise RuntimeError(f"No records produced for {day}")
         write_csv_atomic(csv_path, merged)
