@@ -54,6 +54,10 @@ Endpoints:
 
 These are only used for JAXA FTP fallback. Open-Meteo collection does not require credentials. `DB_HOST` and `DB_PWD` are no longer used by the realtime workflow.
 
+## Publish the static dashboard
+
+The frontend is in `web/` and can be deployed with the Pages workflow. After merging this branch, open **Settings → Pages** and set the build/deployment source to **GitHub Actions**. The workflow copies the latest city snapshot into the static site and deploys the map dashboard. The dashboard currently shows city-point values and time series; the full-resolution raster/COG grid layer is a subsequent milestone.
+
 ## Next milestones
 
 1. Validate city coverage, completeness, and Open-Meteo/JAXA overlap over several days.
