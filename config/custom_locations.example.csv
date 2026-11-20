@@ -1,4 +1,6 @@
 station_id,station_name,province,latitude,longitude
 wuhan,Wuhan,Hubei,30.5928,114.3055
-shanghai,Shanghai,Shanghai,31.2304,121.4737
-tokyo,Tokyo,Tokyo,35.6762,139.6503
+london,London,England,51.5074,-0.1278
+new_york,New York,New York,40.7128,-74.0060
+sydney,Sydney,New South Wales,-33.8688,151.2093
+cairo,Cairo,Egypt,30.0444,31.2357
