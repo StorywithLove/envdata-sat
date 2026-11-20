@@ -92,6 +92,8 @@ def fetch_location(
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=timezone.utc)
         parsed_values[parsed.astimezone(timezone.utc)] = value
+    if len(parsed_values) != len(times):
+        raise ValueError(f"{location['station_id']}: duplicate API timestamps returned")
 
     rows = []
     if strict_10min and start == end:
