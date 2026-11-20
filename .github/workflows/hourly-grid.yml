@@ -1,0 +1,66 @@
+name: Build hourly China radiation raster
+
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "UTC date YYYYMMDD (leave blank for latest completed hour)"
+        required: false
+        type: string
+      hour:
+        description: "UTC hour 0-23 (must be supplied together with date)"
+        required: false
+        type: string
+      min_scans:
+        description: "Minimum available scans out of six"
+        required: true
+        default: "4"
+        type: choice
+        options: ["4", "5", "6"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hourly-raster-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install raster dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r grid-requirements.txt
+      - name: Build hourly China raster
+        env:
+          H8_USERNAME: ${{ secrets.H8_USERNAME }}
+          H8_PASSWORD: ${{ secrets.H8_PASSWORD }}
+          INPUT_DATE: ${{ inputs.date }}
+          INPUT_HOUR: ${{ inputs.hour }}
+          MIN_SCANS: ${{ inputs.min_scans }}
+        run: |
+          ARGS=(--min-scans "$MIN_SCANS")
+          if [ -n "$INPUT_DATE" ] || [ -n "$INPUT_HOUR" ]; then
+            if [ -z "$INPUT_DATE" ] || [ -z "$INPUT_HOUR" ]; then
+              echo "Both date and hour must be supplied together."
+              exit 2
+            fi
+            ARGS+=(--date "$INPUT_DATE" --hour "$INPUT_HOUR")
+          fi
+          python src/build_hourly_grid.py "${ARGS[@]}"
+      - name: Upload raster for inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: china-hourly-radiation-cog
+          path: data/grid/hourly/**
+          if-no-files-found: error
+          retention-days: 7
