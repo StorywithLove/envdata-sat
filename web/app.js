@@ -1,8 +1,37 @@
 const DATA_URL = "./data/latest.json";
 const map = L.map("map").setView([35.8, 104.2], 4);
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  maxZoom: 10, attribution: "&copy; OpenStreetMap contributors"
-}).addTo(map);
+
+// Base map: Tianditu renders China's official boundaries (OpenStreetMap does
+// not — it draws South Tibet as India). The browser key below is public by
+// design; it is protected by the domain allow-list on the Tianditu console.
+const TIANDITU_KEY = "84573ae980db563b20c31877b2532421";
+const AMAP_TILE =
+  "https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}";
+
+function tiandituLayer(layer) {
+  return L.tileLayer(
+    `https://t{s}.tianditu.gov.cn/${layer}_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0` +
+    `&LAYER=${layer}&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles` +
+    `&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=${TIANDITU_KEY}`,
+    { subdomains: "01234567", maxZoom: 18, attribution: "&copy; 天地图" }
+  );
+}
+
+const baseLayer = tiandituLayer("vec");
+const labelLayer = tiandituLayer("cva");
+baseLayer.addTo(map);
+labelLayer.addTo(map);
+// A disabled or over-quota key must not leave the page with a blank map.
+let baseFellBack = false;
+baseLayer.on("tileerror", () => {
+  if (baseFellBack) return;
+  baseFellBack = true;
+  map.removeLayer(labelLayer);
+  map.removeLayer(baseLayer);
+  L.tileLayer(AMAP_TILE, {
+    subdomains: "1234", maxZoom: 18, attribution: "&copy; 高德地图",
+  }).addTo(map);
+});
 let chart;
 const markers = new Map();
 let selectedCity = null;
