@@ -4,7 +4,7 @@ const map = L.map("map").setView([35.8, 104.2], 4);
 // Base map: Tianditu renders China's official boundaries (OpenStreetMap does
 // not — it draws South Tibet as India). The browser key below is public by
 // design; it is protected by the domain allow-list on the Tianditu console.
-const TIANDITU_KEY = "84573ae980db563b20c31877b2532421";
+const TIANDITU_KEY = "2fe2d9b834d1cd9d9526fe9236dfe17a";
 const AMAP_TILE =
   "https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}";
 
