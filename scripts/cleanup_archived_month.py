@@ -19,12 +19,19 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def cleanup_month(month: str, manifest_path: Path, data_root: Path) -> list[Path]:
+def cleanup_month(
+    month: str, manifest_path: Path, data_root: Path, today: date | None = None,
+) -> list[Path]:
     if not re.fullmatch(r"\d{4}-\d{2}", month):
         raise ValueError("month must use YYYY-MM format")
     year, month_number = map(int, month.split("-"))
     if not 1 <= month_number <= 12:
         raise ValueError("month must use YYYY-MM format")
+    current = (today or date.today()).replace(day=1)
+    current_index = current.year * 12 + current.month - 1
+    target_index = year * 12 + month_number - 1
+    if target_index > current_index - 13:
+        raise ValueError("Refusing cleanup: month is not yet outside the one-year retention window")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if manifest.get("month") != month:
         raise ValueError("Archive manifest month does not match requested cleanup month")
