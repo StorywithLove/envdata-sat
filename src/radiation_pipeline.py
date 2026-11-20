@@ -166,6 +166,7 @@ def main() -> None:
                 failures.append({"city_id": city["id"], "error": str(exc)})
     if not collected:
         raise RuntimeError("No city data returned; refusing to overwrite last good snapshot")
+    cities_api_returned = len({r["city_id"] for r in collected})
     collected = complete_timeline(collected, cities)
     fallback_this_run = fill_gaps_with_jaxa(collected, cities)
     now, cutoff = utc_now(), utc_now() - timedelta(hours=24)
@@ -188,7 +189,7 @@ def main() -> None:
     valid = sum(r["ghi_wm2"] is not None for r in records)
     fallback_total = sum(r["source"] == "jaxa_himawari9_l2" for r in records)
     status = {"updated_at_utc": payload["generated_at_utc"], "cities_configured": len(cities),
-              "cities_returned": len({r["city_id"] for r in collected}), "records_in_window": len(records),
+              "cities_returned": cities_api_returned, "records_in_window": len(records),
               "valid_records": valid, "missing_records": len(records)-valid,
               "jaxa_fallback_records_in_window": fallback_total,
               "jaxa_fallback_records_this_run": fallback_this_run, "open_meteo_failures": failures,
