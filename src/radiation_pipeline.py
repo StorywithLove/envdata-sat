@@ -168,7 +168,7 @@ def main() -> None:
         raise RuntimeError("No city data returned; refusing to overwrite last good snapshot")
     collected = complete_timeline(collected, cities)
     fallback_this_run = fill_gaps_with_jaxa(collected, cities)
-    now, cutoff = utc_now(), utc_now() - timedelta(hours=26)
+    now, cutoff = utc_now(), utc_now() - timedelta(hours=24)
     merged = {}
     for row in load_existing() + collected:
         if parse_time(row["time_utc"]) >= cutoff:
