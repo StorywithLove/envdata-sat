@@ -91,6 +91,30 @@ class DailyBackwardAverageWindowTests(unittest.TestCase):
         self.assertEqual(summary["provider_null_records"], 1)
         self.assertEqual(summary["temporal_semantics"], "backward_average_interval_end")
 
+    @patch("src.radiation_extract.requests.get")
+    def test_successful_empty_provider_day_is_recorded_as_missing(self, get):
+        response = Mock()
+        response.json.return_value = {
+            "model": "jma_jaxa_himawari",
+            "hourly": {"time": [], "shortwave_radiation": []},
+        }
+        get.return_value = response
+        location = {
+            "station_id": "wuhan", "station_name": "Wuhan", "province": "Hubei",
+            "latitude": 30.59, "longitude": 114.30,
+        }
+
+        rows, summary = fetch_location(
+            location, date(2026, 11, 19), date(2026, 11, 19),
+            "jma_jaxa_himawari",
+        )
+
+        self.assertEqual(len(rows), 144)
+        self.assertTrue(all(row["ghi_wm2"] == "" for row in rows))
+        self.assertTrue(all(row["quality_flag"] == "provider_timestamp_missing" for row in rows))
+        self.assertEqual(summary["missing_timestamp_records"], 144)
+        self.assertFalse(summary["cadence_verified"])
+
 
 if __name__ == "__main__":
     unittest.main()
