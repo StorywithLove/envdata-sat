@@ -64,7 +64,7 @@ class DailyBackwardAverageWindowTests(unittest.TestCase):
             for i in range(288)
         ]
         values = [0.0] * len(timestamps)
-        values[1] = None
+        values[2] = None
         response = Mock()
         response.json.return_value = {
             "model": "jma_jaxa_himawari",
