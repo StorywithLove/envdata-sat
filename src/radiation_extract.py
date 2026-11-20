@@ -77,7 +77,9 @@ def fetch_location(
     response = requests.get(API_URL, params=params, timeout=90)
     response.raise_for_status()
     payload = response.json()
-    hourly = payload.get("hourly") or {}
+    if not isinstance(payload.get("hourly"), dict):
+        raise ValueError(f"{location['station_id']}: API response has no hourly data object")
+    hourly = payload["hourly"]
     times = hourly.get("time") or []
     values = hourly.get("shortwave_radiation") or []
     if len(times) != len(values) or (not times and not daily_city_window):
@@ -104,7 +106,7 @@ def fetch_location(
             int((right - left).total_seconds())
             for left, right in zip(observed, observed[1:])
         ]
-        if observed_deltas and (600 not in observed_deltas or any(delta <= 0 or delta % 600 != 0 for delta in observed_deltas)):
+        if any(delta <= 0 or delta % 600 != 0 for delta in observed_deltas):
             raise ValueError(
                 f"{location['station_id']}: returned timestamps do not establish native 10-minute cadence; "
                 f"observed steps={sorted(set(observed_deltas))}"

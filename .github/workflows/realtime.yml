@@ -2,15 +2,6 @@ name: Satellite radiation city data
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - "src/**"
-      - "config/**"
-      - ".github/workflows/realtime.yml"
-  schedule:
-    # Best-effort 15-minute collection; the satellite product itself has ~30 min latency.
-    - cron: "*/15 * * * *"
 
 permissions:
   contents: write
@@ -20,6 +11,7 @@ permissions:
 concurrency:
   group: satellite-radiation-collection
   cancel-in-progress: false
+  queue: max
 
 jobs:
   collect:
@@ -38,24 +30,35 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests numpy netCDF4
-      - name: Collect city radiation data
-        env:
-          H8_USERNAME: ${{ secrets.H8_USERNAME }}
-          H8_PASSWORD: ${{ secrets.H8_PASSWORD }}
+          pip install requests
+      - name: Collect and upsert hourly city radiation data
         run: python src/radiation_pipeline.py
       - name: Commit latest snapshot
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/cities/latest.json data/cities/status.json
+          git add -A data/cities/
+          if [ -d data/daily ]; then
+            git add -A data/daily/
+          fi
           if git diff --cached --quiet; then
             echo "No data changes to commit."
           else
-            git commit -m "data: refresh city satellite radiation snapshot"
+            git commit -m "data: update hourly satellite radiation daily CSV"
             # Rebase over concurrent documentation/config commits before pushing.
-            git pull --rebase origin main
-            git push
+            for attempt in 1 2 3 4 5; do
+              git fetch origin main
+              git rebase origin/main
+              if git push origin HEAD:main; then
+                break
+              fi
+              echo "Push raced with another writer; retrying ($attempt/5)."
+              sleep $((attempt * 2))
+              if [ "$attempt" -eq 5 ]; then
+                echo "Unable to push realtime snapshot after 5 attempts."
+                exit 1
+              fi
+            done
           fi
       - name: Prepare dashboard data
         run: |

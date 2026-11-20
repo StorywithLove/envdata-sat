@@ -1,230 +1,281 @@
 #!/usr/bin/env python3
-"""Collect city-level satellite GHI from Open-Meteo, with optional JAXA L2 gap checks."""
+"""Hourly incremental collector for 31 fixed Himawari stations.
+
+Each run refreshes the current UTC day's daily CSV. During the first three UTC
+hours it also refreshes yesterday, allowing late provider publication and
+missed runs to be recovered. The CSV is rewritten atomically after timestamp
+deduplication; it is not a per-run snapshot.
+"""
 from __future__ import annotations
-import json, logging, os, subprocess, tempfile
+
+import csv
+import json
+import logging
+import os
+import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-import numpy as np
-import requests
-from netCDF4 import Dataset
+
+try:
+    from .radiation_extract import FIELDS, fetch_location, load_cities, parse_utc_timestamp
+except ImportError:  # Direct execution: python src/radiation_pipeline.py
+    from radiation_extract import FIELDS, fetch_location, load_cities, parse_utc_timestamp
 
 ROOT = Path(__file__).resolve().parents[1]
-CITY_FILE = ROOT / "config" / "cities.json"
-DATA_DIR = ROOT / "data" / "cities"
-LATEST_FILE = DATA_DIR / "latest.json"
-STATUS_FILE = DATA_DIR / "status.json"
-API_URL = "https://satellite-api.open-meteo.com/v1/archive"
-LOG = logging.getLogger("radiation-pipeline")
+DAILY_DIR = ROOT / "data" / "daily"
+CITY_DIR = ROOT / "data" / "cities"
+LATEST_FILE = CITY_DIR / "latest.json"
+SNAPSHOT_STATUS_FILE = CITY_DIR / "status.json"
+LOG = logging.getLogger("hourly-radiation-collector")
+MODEL = "jma_jaxa_himawari"
+
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc).replace(second=0, microsecond=0)
 
-def parse_time(value: str) -> datetime:
-    return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
 
-def fetch_city(city: dict[str, Any]) -> list[dict[str, Any]]:
-    # Request complete UTC calendar days from the archive endpoint, then let
-    # complete_timeline() retain the rolling 24-hour window. Using past_hours /
-    # forecast_hours here can return a mixed hourly/native value series near today.
-    today = utc_now().date()
-    start_date = today - timedelta(days=1)
-    params = {
-        "latitude": city["latitude"], "longitude": city["longitude"],
-        "hourly": "shortwave_radiation", "models": "jma_jaxa_himawari",
-        "temporal_resolution": "native",
-        "start_date": start_date.isoformat(), "end_date": today.isoformat(),
-        "timezone": "UTC",
-    }
-    response = requests.get(API_URL, params=params, timeout=45)
-    response.raise_for_status()
-    hourly = response.json().get("hourly") or {}
-    times, values = hourly.get("time") or [], hourly.get("shortwave_radiation") or []
-    if len(times) != len(values):
-        raise ValueError(f"Mismatched time/value arrays for {city['id']}")
-    if len(times) < 2:
-        raise ValueError(f"Insufficient native-resolution timestamps for {city['id']}: {len(times)}")
-    # Fail closed if the API silently falls back to hourly output. The caller must
-    # never label hourly samples as native 10-minute satellite observations.
-    parsed_times = [parse_time(t) for t in times]
-    deltas = [
-        int((right - left).total_seconds())
-        for left, right in zip(parsed_times, parsed_times[1:])
-    ]
-    ten_minute_steps = sum(delta == 600 for delta in deltas)
-    if ten_minute_steps < max(1, (len(deltas) + 1) // 2):
-        from collections import Counter
-        cadence = Counter(deltas).most_common(3)
-        raise ValueError(
-            f"API did not return native 10-minute cadence for {city['id']}; "
-            f"most common time-step seconds: {cadence}"
-        )
-    return [{
-        "city_id": city["id"], "city": city["name"], "province": city["province"],
-        "latitude": city["latitude"], "longitude": city["longitude"],
-        "time_utc": parse_time(t).isoformat().replace("+00:00", "Z"),
-        "ghi_wm2": None if v is None else float(v), "unit": "W/m²",
-        "source": "open_meteo_himawari9",
-        "quality_flag": "valid" if v is not None else "missing",
-        "temporal_semantics": "backward_average_native_10min",
-    } for t, v in zip(times, values)]
+def daily_paths(day: date) -> tuple[Path, Path]:
+    folder = DAILY_DIR / f"{day:%Y}" / f"{day:%m}"
+    stem = f"radiation_{day:%Y%m%d}"
+    return folder / f"{stem}.csv", folder / f"{stem}.status.json"
 
-def jaxa_filename(scan_start: datetime) -> str:
-    return f"H09_{scan_start:%Y%m%d_%H%M}_RFL021_FLDK.02801_02401.nc"
 
-def download_jaxa(scan_start: datetime, target: Path) -> bool:
-    username, password = os.getenv("H8_USERNAME"), os.getenv("H8_PASSWORD")
-    if not username or not password:
+def read_csv(path: Path) -> list[dict[str, Any]]:
+    if not path.is_file():
+        return []
+    with path.open("r", encoding="utf-8-sig", newline="") as stream:
+        return list(csv.DictReader(stream))
+
+
+def write_csv_atomic(path: Path, rows: list[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rows.sort(key=lambda row: (row["time_utc"], row["station_id"]))
+    with tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8-sig", newline="", dir=path.parent,
+        prefix=path.name + ".", suffix=".tmp", delete=False,
+    ) as stream:
+        temporary = Path(stream.name)
+        writer = csv.DictWriter(stream, fieldnames=FIELDS)
+        writer.writeheader()
+        writer.writerows(rows)
+    temporary.replace(path)
+
+
+def merge_rows(existing: list[dict[str, Any]], fetched: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Upsert by station/time; never downgrade a valid value to a missing value."""
+    merged: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in existing + fetched:
+        key = (row["station_id"], row["time_utc"])
+        previous = merged.get(key)
+        new_is_missing = row.get("ghi_wm2", "") in ("", None)
+        previous_is_valid = previous is not None and previous.get("ghi_wm2", "") not in ("", None)
+        if previous_is_valid and new_is_missing:
+            continue
+        merged[key] = {field: row.get(field, "") for field in FIELDS}
+    return sorted(merged.values(), key=lambda row: (row["time_utc"], row["station_id"]))
+
+
+def is_day_complete(day: date, cities: list[dict[str, Any]]) -> bool:
+    csv_path, status_path = daily_paths(day)
+    rows = read_csv(csv_path)
+    if not status_path.is_file():
         return False
-    filename = jaxa_filename(scan_start)
-    remote = ("ftp://ftp.ptree.jaxa.jp/pub/himawari/L2/PAR/021/"
-              f"{scan_start:%Y%m}/{scan_start:%d}/{scan_start:%H}/{filename}")
-    command = ["wget", "-q", "--timeout=30", "--tries=2",
-               f"--ftp-user={username}", f"--ftp-password={password}",
-               "-O", str(target), remote]
-    result = subprocess.run(command, capture_output=True, text=True, timeout=90)
-    return result.returncode == 0 and target.exists() and target.stat().st_size > 0
-
-def extract_jaxa_pixels(nc_path: Path, cities: list[dict[str, Any]]) -> dict[str, float]:
-    extracted = {}
-    with Dataset(nc_path) as dataset:
-        latitudes = np.asarray(dataset.variables["latitude"][:])
-        longitudes = np.asarray(dataset.variables["longitude"][:])
-        swr = dataset.variables["SWR"][:]
-        for city in cities:
-            lon = city["longitude"]
-            if np.nanmax(longitudes) > 180 and lon < 0:
-                lon %= 360
-            row = int(np.nanargmin(np.abs(latitudes - city["latitude"])))
-            col = int(np.nanargmin(np.abs(longitudes - lon)))
-            value = swr[row, col]
-            if np.ma.is_masked(value):
-                continue
-            number = float(value)
-            if np.isfinite(number) and number >= 0:
-                extracted[city["id"]] = number
-    return extracted
-
-def fill_gaps_with_jaxa(rows: list[dict[str, Any]], cities: list[dict[str, Any]]) -> int:
-    # Limit automatic FTP repair to the most recent hour; older gaps remain visible
-    # in status/data and can be handled by a dedicated backfill workflow.
-    recent_cutoff = utc_now() - timedelta(hours=1)
-    missing_times = sorted({parse_time(r["time_utc"]) for r in rows
-                            if r["ghi_wm2"] is None and parse_time(r["time_utc"]) >= recent_cutoff})
-    if not missing_times:
-        return 0
-    rows_by_key = {(r["city_id"], r["time_utc"]): r for r in rows}
-    filled = 0
-    with tempfile.TemporaryDirectory(prefix="jaxa-gap-") as tmp:
-        for interval_end in missing_times:
-            # JAXA labels the scan start; Open-Meteo labels the backward interval end.
-            scan_start = interval_end - timedelta(minutes=10)
-            nc_path = Path(tmp) / jaxa_filename(scan_start)
-            if not download_jaxa(scan_start, nc_path):
-                LOG.warning("JAXA file unavailable for nominal scan %s", scan_start.isoformat())
-                continue
-            try:
-                pixels = extract_jaxa_pixels(nc_path, cities)
-            except Exception:
-                LOG.exception("Could not read JAXA file %s", nc_path.name)
-                continue
-            finally:
-                nc_path.unlink(missing_ok=True)
-            time_key = interval_end.isoformat().replace("+00:00", "Z")
-            for city_id, value in pixels.items():
-                row = rows_by_key.get((city_id, time_key))
-                if row is not None and row["ghi_wm2"] is None:
-                    row.update({"ghi_wm2": value, "source": "jaxa_himawari9_l2",
-                                "quality_flag": "fallback_raw_instant_not_time_equivalent",
-                                "temporal_semantics": "instantaneous_scan_unadjusted"})
-                    filled += 1
-    return filled
-
-def complete_timeline(rows: list[dict[str, Any]], cities: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Materialize missing 10-minute slots so delayed/absent API samples can be checked."""
-    now = utc_now()
-    latest = now.replace(minute=(now.minute // 10) * 10)
-    first = latest - timedelta(hours=24)
-    indexed = {(row["city_id"], row["time_utc"]): row for row in rows}
-    result = []
-    for city in cities:
-        timestamp = first
-        while timestamp <= latest:
-            key = (city["id"], timestamp.isoformat().replace("+00:00", "Z"))
-            row = indexed.get(key)
-            if row is None:
-                row = {
-                    "city_id": city["id"], "city": city["name"], "province": city["province"],
-                    "latitude": city["latitude"], "longitude": city["longitude"],
-                    "time_utc": key[1], "ghi_wm2": None, "unit": "W/m²",
-                    "source": "not_returned_by_open_meteo", "quality_flag": "missing",
-                    "temporal_semantics": "backward_average_native_10min",
-                }
-            result.append(row)
-            timestamp += timedelta(minutes=10)
-    return result
-
-def load_existing() -> list[dict[str, Any]]:
-    if not LATEST_FILE.exists():
-        return []
     try:
-        return json.loads(LATEST_FILE.read_text(encoding="utf-8")).get("records", [])
+        status = json.loads(status_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        LOG.warning("Existing latest.json unreadable; starting fresh")
-        return []
+        return False
+    expected_ids = {city["station_id"] for city in cities}
+    if len(rows) != len(expected_ids) * 144:
+        return False
+    if status.get("locations_succeeded") != len(expected_ids) or status.get("locations_failed") or status.get("failures"):
+        return False
+    # Recheck provider nulls briefly after midnight because late publication can
+    # turn a prior null into a value; after that, genuine missing data is retained.
+    if status.get("missing_records", 0) > 0 and datetime.now(timezone.utc).hour < 3:
+        return False
+    grouped: dict[str, set[str]] = {station_id: set() for station_id in expected_ids}
+    for row in rows:
+        station_id = row.get("station_id")
+        if station_id not in grouped:
+            return False
+        grouped[station_id].add(row.get("time_utc", ""))
+    expected_start = datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc)
+    expected_times = {
+        (expected_start + timedelta(minutes=10 * index)).isoformat().replace("+00:00", "Z")
+        for index in range(1, 145)
+    }
+    return all(times == expected_times for times in grouped.values())
 
-def main() -> None:
-    logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(message)s")
-    cities = json.loads(CITY_FILE.read_text(encoding="utf-8"))
-    collected, failures = [], []
-    with ThreadPoolExecutor(max_workers=4) as pool:
-        futures = {pool.submit(fetch_city, city): city for city in cities}
+
+def summarize_day(
+    day: date,
+    rows: list[dict[str, Any]],
+    cities: list[dict[str, Any]],
+    summaries: dict[str, dict[str, Any]],
+    failures: list[dict[str, str]],
+    generated_at: str,
+) -> dict[str, Any]:
+    by_station: dict[str, list[dict[str, Any]]] = {city["station_id"]: [] for city in cities}
+    for row in rows:
+        by_station.setdefault(row["station_id"], []).append(row)
+
+    location_summaries = []
+    for city in cities:
+        station_id = city["station_id"]
+        station_rows = by_station.get(station_id, [])
+        api_summary = summaries.get(station_id, {})
+        valid = sum(row.get("ghi_wm2", "") not in ("", None) for row in station_rows)
+        missing_timestamp = sum(row.get("quality_flag") == "provider_timestamp_missing" for row in station_rows)
+        provider_null = sum(row.get("quality_flag") == "provider_returned_null" for row in station_rows)
+        location_summaries.append({
+            "station_id": station_id,
+            "records": len(station_rows),
+            "valid_records": valid,
+            "missing_timestamp_records": missing_timestamp,
+            "provider_null_records": provider_null,
+            "cadences_seconds": api_summary.get("cadences_seconds", [600]),
+            "observed_time_steps_seconds": api_summary.get("observed_time_steps_seconds", []),
+            "cadence_verified": api_summary.get("cadence_verified", False),
+            "actual_model": api_summary.get("actual_model"),
+            "temporal_semantics": "backward_average_interval_end",
+        })
+
+    valid_records = sum(item["valid_records"] for item in location_summaries)
+    records = len(rows)
+    return {
+        "generated_at_utc": generated_at,
+        "date_utc": day.isoformat(),
+        "period_start_utc": day.isoformat(),
+        "period_end_utc": day.isoformat(),
+        "locations_requested": len(cities),
+        "locations_succeeded": len(cities) - len(failures),
+        "locations_failed": failures,
+        "failures": failures,
+        "records": records,
+        "valid_records": valid_records,
+        "missing_records": records - valid_records,
+        "model_requested": MODEL,
+        "temporal_resolution": "native; 600-second UTC interval-end grid",
+        "location_summaries": location_summaries,
+    }
+
+
+def fetch_day(day: date, cities: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]], list[dict[str, str]]]:
+    collected: list[dict[str, Any]] = []
+    summaries: dict[str, dict[str, Any]] = {}
+    failures: list[dict[str, str]] = []
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        futures = {
+            pool.submit(fetch_location, city, day, day, MODEL): city
+            for city in cities
+        }
         for future in as_completed(futures):
             city = futures[future]
             try:
-                collected.extend(future.result())
+                rows, summary = future.result()
+                collected.extend(rows)
+                summaries[city["station_id"]] = summary
             except Exception as exc:
-                LOG.exception("Open-Meteo request failed for %s", city["id"])
-                failures.append({"city_id": city["id"], "error": str(exc)})
-    if not collected:
-        raise RuntimeError("No city data returned; refusing to overwrite last good snapshot")
-    cities_api_returned = len({r["city_id"] for r in collected})
-    collected = complete_timeline(collected, cities)
-    fallback_this_run = fill_gaps_with_jaxa(collected, cities)
-    now, cutoff = utc_now(), utc_now() - timedelta(hours=24)
-    merged = {}
-    for row in load_existing() + collected:
-        if parse_time(row["time_utc"]) >= cutoff:
-            key = (row["city_id"], row["time_utc"])
-            previous = merged.get(key)
-            # Never replace a previously valid observation with a later null/missing row.
-            if previous is not None and previous.get("ghi_wm2") is not None and row.get("ghi_wm2") is None:
+                LOG.exception("Provider request failed for %s on %s", city["station_id"], day)
+                failures.append({"station_id": city["station_id"], "error": str(exc)})
+    return collected, summaries, failures
+
+
+def dashboard_record(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "city_id": row["station_id"],
+        "city": row["station_name"],
+        "province": row["province"],
+        "latitude": float(row["latitude"]),
+        "longitude": float(row["longitude"]),
+        "time_utc": row["time_utc"],
+        "ghi_wm2": None if row["ghi_wm2"] in ("", None) else float(row["ghi_wm2"]),
+        "unit": row["unit"],
+        "source": row["source"],
+        "quality_flag": row["quality_flag"],
+        "temporal_semantics": "backward_average_interval_end",
+    }
+
+
+def atomic_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(path)
+
+
+def main() -> None:
+    logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(message)s")
+    now = utc_now()
+    today = now.date()
+    # Only completed 10-minute interval-end labels are eligible for the current day.
+    latest_completed = now.replace(minute=(now.minute // 10) * 10)
+    cities = load_cities()
+
+    days = [today]
+    # Re-fetch yesterday only if its daily CSV is incomplete. This catches a
+    # missed final-hour run without doubling API requests on normal days.
+    yesterday = today - timedelta(days=1)
+    if not is_day_complete(yesterday, cities):
+        days.insert(0, yesterday)
+
+    all_daily_rows: dict[date, list[dict[str, Any]]] = {}
+    current_day_status: dict[str, Any] | None = None
+    for day in days:
+        fetched, summaries, failures = fetch_day(day, cities)
+        csv_path, status_path = daily_paths(day)
+        existing = read_csv(csv_path)
+        if day == today:
+            # Normally six new interval ends arrive each hour. Re-read the
+            # preceding hour as overlap so provider publication delays are repaired.
+            earliest_refresh = latest_completed - timedelta(hours=2)
+            fetched = [
+                row for row in fetched
+                if earliest_refresh < parse_utc_timestamp(row["time_utc"]) <= latest_completed
+            ]
+        merged = merge_rows(existing, fetched)
+        if not merged:
+            if failures or day == today:
+                LOG.warning("No elapsed records available for %s; preserving any existing files", day)
                 continue
-            merged[key] = row
-    records = sorted(merged.values(), key=lambda r: (r["time_utc"], r["city_id"]))
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    payload = {"generated_at_utc": now.isoformat().replace("+00:00", "Z"),
-               "provider": "Open-Meteo Satellite Radiation API + optional JAXA P-Tree FTP",
-               "variable": "shortwave_radiation", "unit": "W/m²",
-               "temporal_resolution": "native (Himawari-9: 10 min)", "records": records}
-    LATEST_FILE.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
-    valid = sum(r["ghi_wm2"] is not None for r in records)
-    fallback_total = sum(r["source"] == "jaxa_himawari9_l2" for r in records)
-    status = {"updated_at_utc": payload["generated_at_utc"], "cities_configured": len(cities),
-              "cities_returned": cities_api_returned, "records_in_window": len(records),
-              "valid_records": valid, "missing_records": len(records)-valid,
-              "jaxa_fallback_records_in_window": fallback_total,
-              "jaxa_fallback_records_this_run": fallback_this_run, "open_meteo_failures": failures,
-              "jaxa_fallback_enabled": bool(os.getenv("H8_USERNAME") and os.getenv("H8_PASSWORD")),
-              "notes": ["Open-Meteo values are backward-averaged native 10-minute intervals.",
-                        "JAXA L2 fallback values are raw instantaneous scan samples and are not time-equivalent.",
-                        "Open-Meteo and JAXA use the same Himawari-9 family; this is not independent-sensor validation."]}
-    STATUS_FILE.write_text(json.dumps(status, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    LOG.info("Saved %s records (%s valid, %s JAXA fallback, %s missing)",
-             len(records), valid, fallback_total, len(records)-valid)
-    if failures:
-        LOG.warning("%s city requests failed; previous snapshot rows retained where available", len(failures))
+            raise RuntimeError(f"No records produced for {day}")
+        write_csv_atomic(csv_path, merged)
+        generated_at = now.isoformat().replace("+00:00", "Z")
+        status = summarize_day(day, merged, cities, summaries, failures, generated_at)
+        atomic_json(status_path, status)
+        all_daily_rows[day] = merged
+        if day == today:
+            current_day_status = status
+        LOG.info(
+            "%s: %s records, %s valid, %s provider failures",
+            day, status["records"], status["valid_records"], len(failures),
+        )
+
+    # Keep the dashboard's lightweight rolling 24-hour view; the daily CSVs
+    # remain the authoritative history.
+    cutoff = now - timedelta(hours=24)
+    latest_rows = []
+    for day in [today - timedelta(days=1), today]:
+        csv_path, _ = daily_paths(day)
+        source_rows = all_daily_rows.get(day, read_csv(csv_path))
+        for row in source_rows:
+            if parse_utc_timestamp(row["time_utc"]) >= cutoff:
+                latest_rows.append(dashboard_record(row))
+    latest_rows.sort(key=lambda row: (row["time_utc"], row["city_id"]))
+    payload = {
+        "generated_at_utc": now.isoformat().replace("+00:00", "Z"),
+        "provider": "Open-Meteo Satellite Radiation API",
+        "variable": "shortwave_radiation",
+        "unit": "W/m²",
+        "temporal_resolution": "native Himawari-9 10-minute intervals",
+        "records": latest_rows,
+    }
+    atomic_json(LATEST_FILE, payload)
+    if current_day_status is not None:
+        atomic_json(SNAPSHOT_STATUS_FILE, current_day_status)
+
 
 if __name__ == "__main__":
     main()

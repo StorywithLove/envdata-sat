@@ -4,10 +4,10 @@ A standalone GitHub-based satellite radiation data collector and lightweight vis
 
 ## Core data products
 
-1. **Fixed China stations** — 31 mainland provincial-level administrative-center cities, collected daily from the Himawari-9 native 10-minute product. Each UTC calendar day is stored as one CSV plus a JSON quality report:
+1. **Fixed China stations** — 31 mainland provincial-level administrative-center cities, collected by one hourly workflow from the Himawari-9 native 10-minute product. Each run upserts the current UTC day's CSV and quality report:
    `data/daily/YYYY/MM/radiation_YYYYMMDD.csv`.
 2. **Custom global coordinates** — provide a CSV of latitude/longitude and a date range; the extractor preserves the selected source's native cadence (for example 10, 15, or 30 minutes) rather than upsampling it.
-3. **Latest snapshot and dashboard** — the realtime workflow refreshes `data/cities/latest.json` and status metadata for the Web GIS dashboard.
+3. **Latest snapshot and dashboard** — the same hourly collection workflow refreshes the rolling 24-hour `data/cities/latest.json` view for the Web GIS dashboard.
 
 Both extraction modes use the same Open-Meteo satellite radiation API and validate returned timestamps. The fixed Himawari mode requires 600-second cadence.
 
