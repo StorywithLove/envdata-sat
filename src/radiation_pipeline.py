@@ -27,8 +27,8 @@ def parse_time(value: str) -> datetime:
 def fetch_city(city: dict[str, Any]) -> list[dict[str, Any]]:
     params = {
         "latitude": city["latitude"], "longitude": city["longitude"],
-        "hourly": "shortwave_radiation", "models": "satellite_radiation_seamless",
-        "hourly_native": "true", "past_hours": 25, "forecast_hours": 1,
+        "hourly": "shortwave_radiation", "models": "jma_jaxa_himawari",
+        "temporal_resolution": "native", "past_hours": 25, "forecast_hours": 1,
         "timezone": "UTC",
     }
     response = requests.get(API_URL, params=params, timeout=45)
@@ -37,6 +37,23 @@ def fetch_city(city: dict[str, Any]) -> list[dict[str, Any]]:
     times, values = hourly.get("time") or [], hourly.get("shortwave_radiation") or []
     if len(times) != len(values):
         raise ValueError(f"Mismatched time/value arrays for {city['id']}")
+    if len(times) < 2:
+        raise ValueError(f"Insufficient native-resolution timestamps for {city['id']}: {len(times)}")
+    # Fail closed if the API silently falls back to hourly output. The caller must
+    # never label hourly samples as native 10-minute satellite observations.
+    parsed_times = [parse_time(t) for t in times]
+    deltas = [
+        int((right - left).total_seconds())
+        for left, right in zip(parsed_times, parsed_times[1:])
+    ]
+    ten_minute_steps = sum(delta == 600 for delta in deltas)
+    if ten_minute_steps < max(1, (len(deltas) + 1) // 2):
+        from collections import Counter
+        cadence = Counter(deltas).most_common(3)
+        raise ValueError(
+            f"API did not return native 10-minute cadence for {city['id']}; "
+            f"most common time-step seconds: {cadence}"
+        )
     return [{
         "city_id": city["id"], "city": city["name"], "province": city["province"],
         "latitude": city["latitude"], "longitude": city["longitude"],
