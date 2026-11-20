@@ -1,0 +1,575 @@
+{
+  "generated_at_utc": "2026-11-20T06:35:27.395783+00:00",
+  "period_start_utc": "2026-11-19",
+  "period_end_utc": "2026-11-19",
+  "locations_requested": 31,
+  "locations_succeeded": 31,
+  "locations_failed": [],
+  "records": 4464,
+  "valid_records": 4257,
+  "missing_records": 207,
+  "model_requested": "jma_jaxa_himawari",
+  "temporal_resolution": "native; validated per record interval",
+  "location_summaries": [
+    {
+      "station_id": "beijing",
+      "records": 144,
+      "valid_records": 137,
+      "missing_timestamp_records": 0,
+      "provider_null_records": 7,
+      "cadences_seconds": [
+        600
+      ],
+      "observed_time_steps_seconds": [
+        600
+      ],
+      "cadence_verified": true,
+      "actual_model": "jma_jaxa_himawari",
+      "temporal_semantics": "backward_average_interval_end",
+      "period_start_utc": "2026-11-19",
+      "period_end_utc": "2026-11-19"
+    },
+    {
+      "station_id": "changchun",
+      "records": 144,
+      "valid_records": 138,
+      "missing_timestamp_records": 0,
+      "provider_null_records": 6,
+      "cadences_seconds": [
+        600
+      ],
+      "observed_time_steps_seconds": [
+        600
+      ],
+      "cadence_verified": true,
+      "actual_model": "jma_jaxa_himawari",
+      "temporal_semantics": "backward_average_interval_end",
+      "period_start_utc": "2026-11-19",
+      "period_end_utc": "2026-11-19"
+    },
+    {
+      "station_id": "changsha",
+      "records": 144,
+      "valid_records": 138,
+      "missing_timestamp_records": 0,
+      "provider_null_records": 6,
+      "cadences_seconds": [
+        600
+      ],
+      "observed_time_steps_seconds": [
+        600
+      ],
+      "cadence_verified": true,
+      "actual_model": "jma_jaxa_himawari",
+      "temporal_semantics": "backward_average_interval_end",
+      "period_start_utc": "2026-11-19",
+      "period_end_utc": "2026-11-19"
+    },
+    {
+      "station_id": "chengdu",
+      "records": 144,
+      "valid_records": 138,
+      "missing_timestamp_records": 0,
+      "provider_null_records": 6,
+      "cadences_seconds": [
+        600
+      ],
+      "observed_time_steps_seconds": [
+        600
+      ],
+      "cadence_verified": true,
+      "actual_model": "jma_jaxa_himawari",
+      "temporal_semantics": "backward_average_interval_end",
+      "period_start_utc": "2026-11-19",
+      "period_end_utc": "2026-11-19"
+    },
+    {
+      "station_id": "chongqing",
+      "records": 144,
+      "valid_records": 136,
+      "missing_timestamp_records": 0,
+      "provider_null_records": 8,
+      "cadences_seconds": [
+        600
+      ],
+      "observed_time_steps_seconds": [
+        600
+      ],
+      "cadence_verified": true,
+      "actual_model": "jma_jaxa_himawari",
+      "temporal_semantics": "backward_average_interval_end",
+      "period_start_utc": "2026-11-19",
+      "period_end_utc": "2026-11-19"
+    },
+    {
+      "station_id": "fuzhou",
+      "records": 144,
+      "valid_records": 138,
+      "missing_timestamp_records": 0,
+      "provider_null_records": 6,
+      "cadences_seconds": [
+        600
+      ],
+      "observed_time_steps_seconds": [
+        600
+      ],
+      "cadence_verified": true,
+      "actual_model": "jma_jaxa_himawari",
+      "temporal_semantics": "backward_average_interval_end",
+      "period_start_utc": "2026-11-19",
+      "period_end_utc": "2026-11-19"
+    },
+    {
+      "station_id": "guangzhou",
+      "records": 144,
+      "valid_records": 138,
+      "missing_timestamp_records": 0,
+      "provider_null_records": 6,
+      "cadences_seconds": [
+        600
+      ],
+      "observed_time_steps_seconds": [
+        600
+      ],
+      "cadence_verified": true,
+      "actual_model": "jma_jaxa_himawari",
+      "temporal_semantics": "backward_average_interval_end",
+      "period_start_utc": "2026-11-19",
+      "period_end_utc": "2026-11-19"
+    },
+    {
+      "station_id": "guiyang",
+      "records": 144,
+      "valid_records": 138,
+      "missing_timestamp_records": 0,
+      "provider_null_records": 6,
+      "cadences_seconds": [
+        600
+      ],
+      "observed_time_steps_seconds": [
+        600
+      ],
+      "cadence_verified": true,
+      "actual_model": "jma_jaxa_himawari",
+      "temporal_semantics": "backward_average_interval_end",
+      "period_start_utc": "2026-11-19",
+      "period_end_utc": "2026-11-19"
+    },
+    {
+      "station_id": "haikou",
+      "records": 144,
+      "valid_records": 138,
+      "missing_timestamp_records": 0,
+      "provider_null_records": 6,
+      "cadences_seconds": [
+        600
+      ],
+      "observed_time_steps_seconds": [
+        600
+      ],
+      "cadence_verified": true,
+      "actual_model": "jma_jaxa_himawari",
+      "temporal_semantics": "backward_average_interval_end",
+      "period_start_utc": "2026-11-19",
+      "period_end_utc": "2026-11-19"
+    },
+    {
+      "station_id": "hangzhou",
+      "records": 144,
+      "valid_records": 137,
+      "missing_timestamp_records": 0,
+      "provider_null_records": 7,
+      "cadences_seconds": [
+        600
+      ],
+      "observed_time_steps_seconds": [
+        600
+      ],
+      "cadence_verified": true,
+      "actual_model": "jma_jaxa_himawari",
+      "temporal_semantics": "backward_average_interval_end",
+      "period_start_utc": "2026-11-19",
+      "period_end_utc": "2026-11-19"
+    },
+    {
+      "station_id": "harbin",
+      "records": 144,
+      "valid_records": 138,
+      "missing_timestamp_records": 0,
+      "provider_null_records": 6,
+      "cadences_seconds": [
+        600
+      ],
+      "observed_time_steps_seconds": [
+        600
+      ],
+      "cadence_verified": true,
+      "actual_model": "jma_jaxa_himawari",
+      "temporal_semantics": "backward_average_interval_end",
+      "period_start_utc": "2026-11-19",
+      "period_end_utc": "2026-11-19"
+    },
+    {
+      "station_id": "hefei",
+      "records": 144,
+      "valid_records": 138,
+      "missing_timestamp_records": 0,
+      "provider_null_records": 6,
+      "cadences_seconds": [
+        600
+      ],
+      "observed_time_steps_seconds": [
+        600
+      ],
+      "cadence_verified": true,
+      "actual_model": "jma_jaxa_himawari",
+      "temporal_semantics": "backward_average_interval_end",
+      "period_start_utc": "2026-11-19",
+      "period_end_utc": "2026-11-19"
+    },
+    {
+      "station_id": "hohhot",
+      "records": 144,
+      "valid_records": 135,
+      "missing_timestamp_records": 0,
+      "provider_null_records": 9,
+      "cadences_seconds": [
+        600
+      ],
+      "observed_time_steps_seconds": [
+        600
+      ],
+      "cadence_verified": true,
+      "actual_model": "jma_jaxa_himawari",
+      "temporal_semantics": "backward_average_interval_end",
+      "period_start_utc": "2026-11-19",
+      "period_end_utc": "2026-11-19"
+    },
+    {
+      "station_id": "jinan",
+      "records": 144,
+      "valid_records": 138,
+      "missing_timestamp_records": 0,
+      "provider_null_records": 6,
+      "cadences_seconds": [
+        600
+      ],
+      "observed_time_steps_seconds": [
+        600
+      ],
+      "cadence_verified": true,
+      "actual_model": "jma_jaxa_himawari",
+      "temporal_semantics": "backward_average_interval_end",
+      "period_start_utc": "2026-11-19",
+      "period_end_utc": "2026-11-19"
+    },
+    {
+      "station_id": "kunming",
+      "records": 144,
+      "valid_records": 136,
+      "missing_timestamp_records": 0,
+      "provider_null_records": 8,
+      "cadences_seconds": [
+        600
+      ],
+      "observed_time_steps_seconds": [
+        600
+      ],
+      "cadence_verified": true,
+      "actual_model": "jma_jaxa_himawari",
+      "temporal_semantics": "backward_average_interval_end",
+      "period_start_utc": "2026-11-19",
+      "period_end_utc": "2026-11-19"
+    },
+    {
+      "station_id": "lanzhou",
+      "records": 144,
+      "valid_records": 138,
+      "missing_timestamp_records": 0,
+      "provider_null_records": 6,
+      "cadences_seconds": [
+        600
+      ],
+      "observed_time_steps_seconds": [
+        600
+      ],
+      "cadence_verified": true,
+      "actual_model": "jma_jaxa_himawari",
+      "temporal_semantics": "backward_average_interval_end",
+      "period_start_utc": "2026-11-19",
+      "period_end_utc": "2026-11-19"
+    },
+    {
+      "station_id": "lhasa",
+      "records": 144,
+      "valid_records": 132,
+      "missing_timestamp_records": 0,
+      "provider_null_records": 12,
+      "cadences_seconds": [
+        600
+      ],
+      "observed_time_steps_seconds": [
+        600
+      ],
+      "cadence_verified": true,
+      "actual_model": "jma_jaxa_himawari",
+      "temporal_semantics": "backward_average_interval_end",
+      "period_start_utc": "2026-11-19",
+      "period_end_utc": "2026-11-19"
+    },
+    {
+      "station_id": "nanchang",
+      "records": 144,
+      "valid_records": 138,
+      "missing_timestamp_records": 0,
+      "provider_null_records": 6,
+      "cadences_seconds": [
+        600
+      ],
+      "observed_time_steps_seconds": [
+        600
+      ],
+      "cadence_verified": true,
+      "actual_model": "jma_jaxa_himawari",
+      "temporal_semantics": "backward_average_interval_end",
+      "period_start_utc": "2026-11-19",
+      "period_end_utc": "2026-11-19"
+    },
+    {
+      "station_id": "nanjing",
+      "records": 144,
+      "valid_records": 138,
+      "missing_timestamp_records": 0,
+      "provider_null_records": 6,
+      "cadences_seconds": [
+        600
+      ],
+      "observed_time_steps_seconds": [
+        600
+      ],
+      "cadence_verified": true,
+      "actual_model": "jma_jaxa_himawari",
+      "temporal_semantics": "backward_average_interval_end",
+      "period_start_utc": "2026-11-19",
+      "period_end_utc": "2026-11-19"
+    },
+    {
+      "station_id": "nanning",
+      "records": 144,
+      "valid_records": 138,
+      "missing_timestamp_records": 0,
+      "provider_null_records": 6,
+      "cadences_seconds": [
+        600
+      ],
+      "observed_time_steps_seconds": [
+        600
+      ],
+      "cadence_verified": true,
+      "actual_model": "jma_jaxa_himawari",
+      "temporal_semantics": "backward_average_interval_end",
+      "period_start_utc": "2026-11-19",
+      "period_end_utc": "2026-11-19"
+    },
+    {
+      "station_id": "shanghai",
+      "records": 144,
+      "valid_records": 138,
+      "missing_timestamp_records": 0,
+      "provider_null_records": 6,
+      "cadences_seconds": [
+        600
+      ],
+      "observed_time_steps_seconds": [
+        600
+      ],
+      "cadence_verified": true,
+      "actual_model": "jma_jaxa_himawari",
+      "temporal_semantics": "backward_average_interval_end",
+      "period_start_utc": "2026-11-19",
+      "period_end_utc": "2026-11-19"
+    },
+    {
+      "station_id": "shenyang",
+      "records": 144,
+      "valid_records": 138,
+      "missing_timestamp_records": 0,
+      "provider_null_records": 6,
+      "cadences_seconds": [
+        600
+      ],
+      "observed_time_steps_seconds": [
+        600
+      ],
+      "cadence_verified": true,
+      "actual_model": "jma_jaxa_himawari",
+      "temporal_semantics": "backward_average_interval_end",
+      "period_start_utc": "2026-11-19",
+      "period_end_utc": "2026-11-19"
+    },
+    {
+      "station_id": "shijiazhuang",
+      "records": 144,
+      "valid_records": 138,
+      "missing_timestamp_records": 0,
+      "provider_null_records": 6,
+      "cadences_seconds": [
+        600
+      ],
+      "observed_time_steps_seconds": [
+        600
+      ],
+      "cadence_verified": true,
+      "actual_model": "jma_jaxa_himawari",
+      "temporal_semantics": "backward_average_interval_end",
+      "period_start_utc": "2026-11-19",
+      "period_end_utc": "2026-11-19"
+    },
+    {
+      "station_id": "taiyuan",
+      "records": 144,
+      "valid_records": 135,
+      "missing_timestamp_records": 0,
+      "provider_null_records": 9,
+      "cadences_seconds": [
+        600
+      ],
+      "observed_time_steps_seconds": [
+        600
+      ],
+      "cadence_verified": true,
+      "actual_model": "jma_jaxa_himawari",
+      "temporal_semantics": "backward_average_interval_end",
+      "period_start_utc": "2026-11-19",
+      "period_end_utc": "2026-11-19"
+    },
+    {
+      "station_id": "tianjin",
+      "records": 144,
+      "valid_records": 137,
+      "missing_timestamp_records": 0,
+      "provider_null_records": 7,
+      "cadences_seconds": [
+        600
+      ],
+      "observed_time_steps_seconds": [
+        600
+      ],
+      "cadence_verified": true,
+      "actual_model": "jma_jaxa_himawari",
+      "temporal_semantics": "backward_average_interval_end",
+      "period_start_utc": "2026-11-19",
+      "period_end_utc": "2026-11-19"
+    },
+    {
+      "station_id": "urumqi",
+      "records": 144,
+      "valid_records": 138,
+      "missing_timestamp_records": 0,
+      "provider_null_records": 6,
+      "cadences_seconds": [
+        600
+      ],
+      "observed_time_steps_seconds": [
+        600
+      ],
+      "cadence_verified": true,
+      "actual_model": "jma_jaxa_himawari",
+      "temporal_semantics": "backward_average_interval_end",
+      "period_start_utc": "2026-11-19",
+      "period_end_utc": "2026-11-19"
+    },
+    {
+      "station_id": "wuhan",
+      "records": 144,
+      "valid_records": 138,
+      "missing_timestamp_records": 0,
+      "provider_null_records": 6,
+      "cadences_seconds": [
+        600
+      ],
+      "observed_time_steps_seconds": [
+        600
+      ],
+      "cadence_verified": true,
+      "actual_model": "jma_jaxa_himawari",
+      "temporal_semantics": "backward_average_interval_end",
+      "period_start_utc": "2026-11-19",
+      "period_end_utc": "2026-11-19"
+    },
+    {
+      "station_id": "xian",
+      "records": 144,
+      "valid_records": 138,
+      "missing_timestamp_records": 0,
+      "provider_null_records": 6,
+      "cadences_seconds": [
+        600
+      ],
+      "observed_time_steps_seconds": [
+        600
+      ],
+      "cadence_verified": true,
+      "actual_model": "jma_jaxa_himawari",
+      "temporal_semantics": "backward_average_interval_end",
+      "period_start_utc": "2026-11-19",
+      "period_end_utc": "2026-11-19"
+    },
+    {
+      "station_id": "xining",
+      "records": 144,
+      "valid_records": 137,
+      "missing_timestamp_records": 0,
+      "provider_null_records": 7,
+      "cadences_seconds": [
+        600
+      ],
+      "observed_time_steps_seconds": [
+        600
+      ],
+      "cadence_verified": true,
+      "actual_model": "jma_jaxa_himawari",
+      "temporal_semantics": "backward_average_interval_end",
+      "period_start_utc": "2026-11-19",
+      "period_end_utc": "2026-11-19"
+    },
+    {
+      "station_id": "yinchuan",
+      "records": 144,
+      "valid_records": 137,
+      "missing_timestamp_records": 0,
+      "provider_null_records": 7,
+      "cadences_seconds": [
+        600
+      ],
+      "observed_time_steps_seconds": [
+        600
+      ],
+      "cadence_verified": true,
+      "actual_model": "jma_jaxa_himawari",
+      "temporal_semantics": "backward_average_interval_end",
+      "period_start_utc": "2026-11-19",
+      "period_end_utc": "2026-11-19"
+    },
+    {
+      "station_id": "zhengzhou",
+      "records": 144,
+      "valid_records": 138,
+      "missing_timestamp_records": 0,
+      "provider_null_records": 6,
+      "cadences_seconds": [
+        600
+      ],
+      "observed_time_steps_seconds": [
+        600
+      ],
+      "cadence_verified": true,
+      "actual_model": "jma_jaxa_himawari",
+      "temporal_semantics": "backward_average_interval_end",
+      "period_start_utc": "2026-11-19",
+      "period_end_utc": "2026-11-19"
+    }
+  ],
+  "failures": [],
+  "storage_note": "CSV output is written to the configured filesystem; no database is required."
+}
