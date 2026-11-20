@@ -1,10 +1,10 @@
 {
-  "updated_at_utc": "2026-11-20T06:35:00Z",
+  "updated_at_utc": "2026-11-20T07:05:00Z",
   "cities_configured": 31,
   "cities_returned": 31,
   "records_in_window": 4464,
-  "valid_records": 3054,
-  "missing_records": 1410,
+  "valid_records": 2961,
+  "missing_records": 1503,
   "jaxa_fallback_records_in_window": 0,
   "jaxa_fallback_records_this_run": 0,
   "open_meteo_failures": [],
