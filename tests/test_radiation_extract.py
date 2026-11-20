@@ -115,6 +115,35 @@ class DailyBackwardAverageWindowTests(unittest.TestCase):
         self.assertEqual(summary["missing_timestamp_records"], 144)
         self.assertFalse(summary["cadence_verified"])
 
+    @patch("src.radiation_extract.requests.get")
+    def test_sparse_provider_steps_are_preserved_but_not_claimed_verified(self, get):
+        day_start = datetime(2026, 11, 19, tzinfo=timezone.utc)
+        timestamps = [
+            (day_start + timedelta(minutes=30 * index)).strftime("%Y-%m-%dT%H:%M")
+            for index in range(49)
+        ]
+        response = Mock()
+        response.json.return_value = {
+            "model": "jma_jaxa_himawari",
+            "hourly": {"time": timestamps, "shortwave_radiation": [100.0] * len(timestamps)},
+        }
+        get.return_value = response
+        location = {
+            "station_id": "wuhan", "station_name": "Wuhan", "province": "Hubei",
+            "latitude": 30.59, "longitude": 114.30,
+        }
+
+        rows, summary = fetch_location(
+            location, date(2026, 11, 19), date(2026, 11, 19),
+            "jma_jaxa_himawari",
+        )
+
+        self.assertEqual(len(rows), 144)
+        self.assertEqual(summary["observed_time_steps_seconds"], [1800])
+        self.assertFalse(summary["cadence_verified"])
+        self.assertEqual(summary["missing_timestamp_records"], 96)
+        self.assertEqual(summary["valid_records"], 48)
+
 
 if __name__ == "__main__":
     unittest.main()
