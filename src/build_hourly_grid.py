@@ -123,8 +123,8 @@ def write_cog(hour: datetime, total: np.ndarray, count: np.ndarray,
             )
         try:
             raster_copy(
-                temp_path, final_path, driver="COG", compress="DEFLATE",
-                blocksize=512, overview_resampling="average",
+                temp_path, final_path, driver="COG", COMPRESS="DEFLATE",
+                BLOCKSIZE=512, RESAMPLING="AVERAGE",
             )
         except Exception as exc:
             LOG.warning("COG driver unavailable (%s); keeping tiled compressed GeoTIFF", exc)
