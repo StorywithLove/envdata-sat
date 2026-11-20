@@ -17,21 +17,27 @@ function tiandituLayer(layer) {
   );
 }
 
-const baseLayer = tiandituLayer("vec");
-const labelLayer = tiandituLayer("cva");
-baseLayer.addTo(map);
-labelLayer.addTo(map);
+// Tianditu's vector base only covers China; its imagery covers the whole
+// world. Both carry the official Chinese boundary, so the imagery layer is the
+// one to reach for when looking outside China.
+const vectorBase = L.layerGroup([tiandituLayer("vec"), tiandituLayer("cva")]);
+const imageBase = L.layerGroup([tiandituLayer("img"), tiandituLayer("cia")]);
+const amapBase = L.tileLayer(AMAP_TILE, {
+  subdomains: "1234", maxZoom: 18, attribution: "&copy; 高德地图",
+});
+vectorBase.addTo(map);
+L.control.layers(
+  { "天地图·矢量": vectorBase, "天地图·影像": imageBase, "高德地图": amapBase },
+  null, { position: "topleft" },
+).addTo(map);
 // A disabled or over-quota key must not leave the page with a blank map.
 let baseFellBack = false;
-baseLayer.on("tileerror", () => {
+vectorBase.eachLayer(layer => layer.on("tileerror", () => {
   if (baseFellBack) return;
   baseFellBack = true;
-  map.removeLayer(labelLayer);
-  map.removeLayer(baseLayer);
-  L.tileLayer(AMAP_TILE, {
-    subdomains: "1234", maxZoom: 18, attribution: "&copy; 高德地图",
-  }).addTo(map);
-});
+  map.removeLayer(vectorBase);
+  amapBase.addTo(map);
+}));
 let chart;
 const markers = new Map();
 let selectedCity = null;
