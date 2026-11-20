@@ -78,12 +78,12 @@ Endpoints:
 - `GET /api/v1/radiation/point?city=wuhan`
 - Optional UTC filters: `start=2026-11-20T00:00:00Z&end=2026-11-20T12:00:00Z`
 
-## Required GitHub secrets
+## Optional GitHub secrets
 
 - `H8_USERNAME`
 - `H8_PASSWORD`
 
-These are only used for JAXA FTP fallback. Open-Meteo collection does not require credentials. `DB_HOST` and `DB_PWD` are no longer used by the realtime workflow.
+These are optional and are only used for the legacy JAXA FTP fallback in the realtime snapshot pipeline. The daily CSV archive and custom coordinate extractor use the public Open-Meteo API and require no credentials. PostgreSQL variables such as `DB_HOST` and `DB_PWD` are not used.
 
 ## Publish the static dashboard
 
