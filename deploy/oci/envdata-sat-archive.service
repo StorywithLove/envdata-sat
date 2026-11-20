@@ -9,5 +9,5 @@ Type=oneshot
 User=root
 WorkingDirectory=/opt/envdata-sat
 EnvironmentFile=/etc/envdata-sat/archive.env
-ExecStart=/opt/envdata-sat/deploy/oci/run_daily.sh
+ExecStart=/usr/bin/bash /opt/envdata-sat/deploy/oci/run_daily.sh
 TimeoutStartSec=30min
