@@ -69,11 +69,11 @@ export H8_PASSWORD="..."
 python src/build_hourly_grid.py --date 20261120 --hour 3
 ```
 
-By default it processes the latest completed UTC hour (one-hour safety delay). It requires at least four scans and, by default, at least four valid samples per pixel. Output is written under `data/grid/hourly/YYYY/MM/DD/` and is intentionally excluded from Git history.
+By default it processes the latest completed UTC hour (one-hour safety delay). It requires at least four scans and, by default, at least four valid samples per pixel. Output is written under `data/grid/hourly/YYYY/MM/DD/` and is intentionally excluded from Git history. The same builder is exposed through the manual **Build hourly China radiation raster** Actions workflow; its output is uploaded as a short-lived (7-day) artifact for inspection, not used as permanent storage.
 
 **Scientific caveat:** this is an approximate hourly mean of instantaneous L2 scans. It is not scan-time corrected and is not directly equivalent to Open-Meteo's backward-averaged GHI. Metadata records the scan list and this limitation. Do not use it for quantitative cross-source evaluation until the temporal correction is implemented and validated.
 
-The COG output is the raster-processing milestone, not yet a hosted GIS layer. A persistent object-storage bucket and a tile-serving endpoint (for example, TiTiler) are still needed before the frontend can overlay the national grid. Large raster files should not be committed to this Git repository.
+The COG output is the raster-processing milestone, not yet a hosted GIS layer. A persistent object-storage bucket and a tile-serving endpoint (for example, TiTiler) are still needed before the frontend can overlay the national grid. The raster workflow is intentionally manual until a durable object-storage destination is configured; it does not push large imagery into Git. Large raster files should not be committed to this Git repository.
 
 ## Next milestones
 
