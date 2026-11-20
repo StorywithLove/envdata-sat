@@ -44,12 +44,20 @@ def validate_native_cadence(times: list[str], strict_10min: bool) -> list[int]:
     deltas = [int((right - left).total_seconds()) for left, right in zip(parsed, parsed[1:])]
     if not deltas:
         raise ValueError("API returned fewer than two timestamps")
-    allowed = {600} if strict_10min else {600, 900, 1800}
+    if strict_10min:
+        # A missing scan may create a 20/30/... minute gap. The native cadence
+        # remains 10 minutes; absent slots are materialized as missing below.
+        invalid = [(index, delta) for index, delta in enumerate(deltas)
+                   if delta <= 0 or delta % 600 != 0]
+        if invalid:
+            raise ValueError(f"Unexpected non-10-minute-aligned intervals: {invalid[:10]}")
+        return [600] * len(times)
+    allowed = {600, 900, 1800}
     invalid = [(index, delta) for index, delta in enumerate(deltas) if delta not in allowed]
     if invalid:
         raise ValueError(f"Unexpected native cadence intervals: {invalid[:10]}; allowed seconds={sorted(allowed)}")
-    # First record uses the first observed interval; every row carries its interval cadence.
     return [deltas[0], *deltas]
+
 
 def fetch_location(
     location: dict[str, Any], start: date, end: date, model: str,
@@ -77,37 +85,72 @@ def fetch_location(
         )
     strict_10min = model == "jma_jaxa_himawari"
     cadences = validate_native_cadence(times, strict_10min=strict_10min)
-    if strict_10min and start == end:
-        expected_start = datetime.combine(start, datetime.min.time(), tzinfo=timezone.utc)
-        expected_last = expected_start + timedelta(minutes=1430)
-        first = datetime.fromisoformat(times[0].replace("Z", "+00:00")).replace(tzinfo=timezone.utc)
-        last = datetime.fromisoformat(times[-1].replace("Z", "+00:00")).replace(tzinfo=timezone.utc)
-        if len(times) != 144 or first != expected_start or last != expected_last:
-            raise ValueError("{}: expected 144 timestamps, received {} from {} to {}".format(location["station_id"], len(times), first.isoformat(), last.isoformat()))
     actual_model = payload.get("model") or model
+    parsed_values = {}
+    for timestamp, value in zip(times, values):
+        parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        parsed_values[parsed.astimezone(timezone.utc)] = value
+
     rows = []
-    for timestamp, value, cadence in zip(times, values, cadences):
-        parsed_timestamp = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-        if parsed_timestamp.tzinfo is None:
-            parsed_timestamp = parsed_timestamp.replace(tzinfo=timezone.utc)
-        rows.append({
-            "station_id": location["station_id"],
-            "station_name": location["station_name"],
-            "province": location.get("province", ""),
-            "latitude": location["latitude"],
-            "longitude": location["longitude"],
-            "time_utc": parsed_timestamp.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
-            "ghi_wm2": "" if value is None else float(value),
-            "unit": "W/m²",
-            "model_requested": model,
-            "temporal_resolution_seconds": cadence,
-            "source": actual_model,
-            "quality_flag": "missing" if value is None else "valid",
-        })
+    if strict_10min and start == end:
+        # Fixed-station daily output always has 144 timeline slots. Missing
+        # upstream timestamps and explicit null values remain distinguishable.
+        day_start = datetime.combine(start, datetime.min.time(), tzinfo=timezone.utc)
+        expected_times = [day_start + timedelta(minutes=10 * i) for i in range(144)]
+        unexpected = [
+            t for t in parsed_values
+            if t < day_start or t >= day_start + timedelta(days=1)
+            or int((t - day_start).total_seconds()) % 600 != 0
+        ]
+        if unexpected:
+            raise ValueError(f"{location['station_id']}: timestamps outside UTC 10-minute grid: {unexpected[:5]}")
+        for timestamp in expected_times:
+            present = timestamp in parsed_values
+            value = parsed_values.get(timestamp)
+            rows.append({
+                "station_id": location["station_id"],
+                "station_name": location["station_name"],
+                "province": location.get("province", ""),
+                "latitude": location["latitude"],
+                "longitude": location["longitude"],
+                "time_utc": timestamp.isoformat().replace("+00:00", "Z"),
+                "ghi_wm2": "" if value is None else float(value),
+                "unit": "W/m²",
+                "model_requested": model,
+                "temporal_resolution_seconds": 600,
+                "source": actual_model,
+                "quality_flag": "valid" if value is not None else ("missing_value" if present else "missing_timestamp"),
+            })
+    else:
+        for timestamp, value, cadence in zip(times, values, cadences):
+            parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            rows.append({
+                "station_id": location["station_id"],
+                "station_name": location["station_name"],
+                "province": location.get("province", ""),
+                "latitude": location["latitude"],
+                "longitude": location["longitude"],
+                "time_utc": parsed.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+                "ghi_wm2": "" if value is None else float(value),
+                "unit": "W/m²",
+                "model_requested": model,
+                "temporal_resolution_seconds": cadence,
+                "source": actual_model,
+                "quality_flag": "valid" if value is not None else "missing_value",
+            })
+
     summary = {
         "station_id": location["station_id"],
         "records": len(rows),
+        "api_timestamps_returned": len(times),
         "valid_records": sum(row["ghi_wm2"] != "" for row in rows),
+        "missing_records": sum(row["ghi_wm2"] == "" for row in rows),
+        "missing_timestamp_slots": sum(row["quality_flag"] == "missing_timestamp" for row in rows),
+        "missing_value_slots": sum(row["quality_flag"] == "missing_value" for row in rows),
         "cadences_seconds": sorted(set(cadences)),
         "actual_model": actual_model,
     }
