@@ -14,6 +14,16 @@ app = FastAPI(title="China Satellite Radiation API", version="0.1.0",
               description="City-level GHI with provenance-aware JAXA L2 fallback.")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET"], allow_headers=["*"])
 
+def parse_filter_time(value: str | None) -> datetime | None:
+    if value is None:
+        return None
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    # Treat timestamps without an explicit offset as UTC, matching the stored data.
+    if parsed.tzinfo is None:
+        from datetime import timezone
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
 def read_snapshot() -> dict[str, Any]:
     if not DATA_FILE.exists():
         raise HTTPException(status_code=503, detail="No radiation snapshot is available yet")
@@ -54,8 +64,8 @@ def radiation_point(city: str = Query(..., description="City id, e.g. wuhan"),
     if not rows:
         raise HTTPException(status_code=404, detail=f"No data found for city '{city}'")
     try:
-        start_dt = datetime.fromisoformat(start.replace("Z", "+00:00")) if start else None
-        end_dt = datetime.fromisoformat(end.replace("Z", "+00:00")) if end else None
+        start_dt = parse_filter_time(start)
+        end_dt = parse_filter_time(end)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="start/end must be ISO-8601 timestamps") from exc
     if start_dt:
