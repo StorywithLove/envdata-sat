@@ -2,14 +2,18 @@ name: Satellite radiation city data
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "config/**"
+      - ".github/workflows/realtime.yml"
   schedule:
     # Best-effort 15-minute collection; the satellite product itself has ~30 min latency.
     - cron: "*/15 * * * *"
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
 
 concurrency:
   group: satellite-radiation-collection
@@ -17,9 +21,6 @@ concurrency:
 
 jobs:
   collect:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -49,20 +50,3 @@ jobs:
             git commit -m "data: refresh city satellite radiation snapshot"
             git push
           fi
-      - name: Prepare dashboard data
-        run: |
-          mkdir -p web/data
-          if [ -f data/cities/latest.json ]; then
-            cp data/cities/latest.json web/data/latest.json
-          else
-            echo '{"records":[],"generated_at_utc":null}' > web/data/latest.json
-          fi
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: web
-      - name: Deploy dashboard
-        id: deployment
-        uses: actions/deploy-pages@v4
