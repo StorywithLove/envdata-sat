@@ -43,6 +43,13 @@
 </main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<script src="./app.js"></script>
+<script>
+  // GitHub Pages serves static files with max-age=600, so a plain ./app.js tag
+  // keeps showing the previous deploy for up to ten minutes. Stamp the URL so
+  // the next page load always fetches the current script.
+  const appScript = document.createElement("script");
+  appScript.src = "./app.js?v=" + Date.now();
+  document.body.appendChild(appScript);
+</script>
 </body>
 </html>
