@@ -28,7 +28,7 @@ def fetch_city(city: dict[str, Any]) -> list[dict[str, Any]]:
     params = {
         "latitude": city["latitude"], "longitude": city["longitude"],
         "hourly": "shortwave_radiation", "models": "satellite_radiation_seamless",
-        "temporal_resolution": "native", "past_hours": 24, "forecast_hours": 1,
+        "hourly_native": "true", "past_hours": 25, "forecast_hours": 1,
         "timezone": "UTC",
     }
     response = requests.get(API_URL, params=params, timeout=45)
@@ -114,6 +114,30 @@ def fill_gaps_with_jaxa(rows: list[dict[str, Any]], cities: list[dict[str, Any]]
                     filled += 1
     return filled
 
+def complete_timeline(rows: list[dict[str, Any]], cities: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Materialize missing 10-minute slots so delayed/absent API samples can be checked."""
+    now = utc_now()
+    latest = now.replace(minute=(now.minute // 10) * 10)
+    first = latest - timedelta(hours=24)
+    indexed = {(row["city_id"], row["time_utc"]): row for row in rows}
+    result = []
+    for city in cities:
+        timestamp = first
+        while timestamp <= latest:
+            key = (city["id"], timestamp.isoformat().replace("+00:00", "Z"))
+            row = indexed.get(key)
+            if row is None:
+                row = {
+                    "city_id": city["id"], "city": city["name"], "province": city["province"],
+                    "latitude": city["latitude"], "longitude": city["longitude"],
+                    "time_utc": key[1], "ghi_wm2": None, "unit": "W/m²",
+                    "source": "not_returned_by_open_meteo", "quality_flag": "missing",
+                    "temporal_semantics": "backward_average_native_10min",
+                }
+            result.append(row)
+            timestamp += timedelta(minutes=10)
+    return result
+
 def load_existing() -> list[dict[str, Any]]:
     if not LATEST_FILE.exists():
         return []
@@ -138,6 +162,7 @@ def main() -> None:
                 failures.append({"city_id": city["id"], "error": str(exc)})
     if not collected:
         raise RuntimeError("No city data returned; refusing to overwrite last good snapshot")
+    collected = complete_timeline(collected, cities)
     fallback_this_run = fill_gaps_with_jaxa(collected, cities)
     now, cutoff = utc_now(), utc_now() - timedelta(hours=26)
     merged = {}
