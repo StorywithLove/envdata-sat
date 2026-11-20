@@ -39,27 +39,17 @@ def parse_date(value: str) -> date:
         raise argparse.ArgumentTypeError(f"Invalid date {value!r}; expected YYYY-MM-DD") from exc
 
 
-def validate_native_cadence(times: list[str], strict_10min: bool) -> int:
+def validate_native_cadence(times: list[str], strict_10min: bool) -> list[int]:
     parsed = [datetime.fromisoformat(t.replace("Z", "+00:00")) for t in times]
-    deltas = [
-        int((right - left).total_seconds())
-        for left, right in zip(parsed, parsed[1:])
-    ]
+    deltas = [int((right - left).total_seconds()) for left, right in zip(parsed, parsed[1:])]
     if not deltas:
         raise ValueError("API returned fewer than two timestamps")
-    counts: dict[int, int] = {}
-    for delta in deltas:
-        counts[delta] = counts.get(delta, 0) + 1
-    cadence, count = max(counts.items(), key=lambda item: item[1])
-    consistency = count / len(deltas)
     allowed = {600} if strict_10min else {600, 900, 1800}
-    if cadence not in allowed or consistency < 0.9:
-        raise ValueError(
-            f"Unexpected native cadence: mode={cadence}s, "
-            f"consistency={consistency:.1%}, observed={sorted(counts.items())}"
-        )
-    return cadence
-
+    invalid = [(index, delta) for index, delta in enumerate(deltas) if delta not in allowed]
+    if invalid:
+        raise ValueError(f"Unexpected native cadence intervals: {invalid[:10]}; allowed seconds={sorted(allowed)}")
+    # First record uses the first observed interval; every row carries its interval cadence.
+    return [deltas[0], *deltas]
 
 def fetch_location(
     location: dict[str, Any], start: date, end: date, model: str,
@@ -85,17 +75,20 @@ def fetch_location(
             f"{location['station_id']}: invalid API arrays "
             f"(times={len(times)}, values={len(values)})"
         )
-    cadence = validate_native_cadence(times, strict_10min=(model == "jma_jaxa_himawari"))
+    cadences = validate_native_cadence(times, strict_10min=(model == "jma_jaxa_himawari"))
     actual_model = payload.get("model") or model
     rows = []
-    for timestamp, value in zip(times, values):
+    for timestamp, value, cadence in zip(times, values, cadences):
+        parsed_timestamp = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        if parsed_timestamp.tzinfo is None:
+            parsed_timestamp = parsed_timestamp.replace(tzinfo=timezone.utc)
         rows.append({
             "station_id": location["station_id"],
             "station_name": location["station_name"],
             "province": location.get("province", ""),
             "latitude": location["latitude"],
             "longitude": location["longitude"],
-            "time_utc": timestamp if timestamp.endswith("Z") else timestamp + "Z",
+            "time_utc": parsed_timestamp.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
             "ghi_wm2": "" if value is None else float(value),
             "unit": "W/m²",
             "model_requested": model,
@@ -107,7 +100,7 @@ def fetch_location(
         "station_id": location["station_id"],
         "records": len(rows),
         "valid_records": sum(row["ghi_wm2"] != "" for row in rows),
-        "cadence_seconds": cadence,
+        "cadences_seconds": sorted(set(cadences)),
         "actual_model": actual_model,
     }
     return rows, summary
@@ -200,9 +193,9 @@ def run(args: argparse.Namespace) -> int:
                 rows, item_summary = future.result()
                 all_rows.extend(rows)
                 summaries.append(item_summary)
-                LOG.info("%s: %s records, %s valid, cadence=%ss",
+                LOG.info("%s: %s records, %s valid, cadences=%s",
                          location["station_id"], item_summary["records"],
-                         item_summary["valid_records"], item_summary["cadence_seconds"])
+                         item_summary["valid_records"], item_summary["cadences_seconds"])
             except Exception as exc:
                 LOG.exception("Extraction failed for %s", location["station_id"])
                 failures.append({"station_id": location["station_id"], "error": str(exc)})
@@ -221,7 +214,7 @@ def run(args: argparse.Namespace) -> int:
         "valid_records": valid_count,
         "missing_records": len(all_rows) - valid_count,
         "model_requested": model,
-        "temporal_resolution": "native; validated per location",
+        "temporal_resolution": "native; validated per record interval",
         "location_summaries": sorted(summaries, key=lambda item: item["station_id"]),
         "failures": failures,
         "storage_note": "CSV output is written to the configured filesystem; no database is required.",
