@@ -78,10 +78,18 @@ def merge_rows(existing: list[dict[str, Any]], fetched: list[dict[str, Any]]) ->
 
 
 def is_day_complete(day: date, cities: list[dict[str, Any]]) -> bool:
-    csv_path, _ = daily_paths(day)
+    csv_path, status_path = daily_paths(day)
     rows = read_csv(csv_path)
+    if not status_path.is_file():
+        return False
+    try:
+        status = json.loads(status_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
     expected_ids = {city["station_id"] for city in cities}
     if len(rows) != len(expected_ids) * 144:
+        return False
+    if status.get("locations_succeeded") != len(expected_ids) or status.get("locations_failed") or status.get("failures"):
         return False
     grouped: dict[str, set[str]] = {station_id: set() for station_id in expected_ids}
     for row in rows:
