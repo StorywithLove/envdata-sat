@@ -22,12 +22,13 @@ function tiandituLayer(layer) {
 // one to reach for when looking outside China.
 const vectorBase = L.layerGroup([tiandituLayer("vec"), tiandituLayer("cva")]);
 const imageBase = L.layerGroup([tiandituLayer("img"), tiandituLayer("cia")]);
+const terrainBase = L.layerGroup([tiandituLayer("ter"), tiandituLayer("cta")]);
 const amapBase = L.tileLayer(AMAP_TILE, {
   subdomains: "1234", maxZoom: 18, attribution: "&copy; 高德地图",
 });
 vectorBase.addTo(map);
 L.control.layers(
-  { "天地图·矢量": vectorBase, "天地图·影像": imageBase, "高德地图": amapBase },
+  { "天地图·矢量": vectorBase, "天地图·影像": imageBase, "天地图·地形": terrainBase, "高德地图": amapBase },
   null, { position: "topleft" },
 ).addTo(map);
 // A disabled or over-quota key must not leave the page with a blank map.
