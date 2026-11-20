@@ -31,7 +31,7 @@ Output:
 - `data/cities/latest.json`: rolling city-point snapshot (about 24 hours).
 - `data/cities/status.json`: update time, completeness counts, failures, and provenance notes.
 
-The workflow runs every 15 minutes, can be triggered manually, and runs once when the collection code/configuration or its workflow definition changes on `main`. GitHub Actions schedules are best-effort, not a hard real-time scheduler. The separate Pages workflow deploys the dashboard when `web/` or `data/cities/` changes.
+The workflow runs every 15 minutes, can be triggered manually, and runs once when the collection code/configuration or its workflow definition changes on `main`. It deploys the dashboard in the same run after refreshing the snapshot. GitHub Actions schedules are best-effort, not a hard real-time scheduler. The separate Pages workflow handles frontend-only changes.
 
 ## Run the API locally
 
