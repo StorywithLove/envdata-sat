@@ -1,4 +1,4 @@
-const DATA_URL = "https://raw.githubusercontent.com/StorywithLove/envdata-sat/main/data/cities/latest.json";
+const DATA_URL = "./data/latest.json";
 const map = L.map("map").setView([35.8, 104.2], 4);
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 10, attribution: "&copy; OpenStreetMap contributors"
