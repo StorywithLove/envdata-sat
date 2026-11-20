@@ -25,10 +25,16 @@ def parse_time(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
 
 def fetch_city(city: dict[str, Any]) -> list[dict[str, Any]]:
+    # Request complete UTC calendar days from the archive endpoint, then let
+    # complete_timeline() retain the rolling 24-hour window. Using past_hours /
+    # forecast_hours here can return a mixed hourly/native value series near today.
+    today = utc_now().date()
+    start_date = today - timedelta(days=1)
     params = {
         "latitude": city["latitude"], "longitude": city["longitude"],
         "hourly": "shortwave_radiation", "models": "jma_jaxa_himawari",
-        "temporal_resolution": "native", "past_hours": 25, "forecast_hours": 1,
+        "temporal_resolution": "native",
+        "start_date": start_date.isoformat(), "end_date": today.isoformat(),
         "timezone": "UTC",
     }
     response = requests.get(API_URL, params=params, timeout=45)
