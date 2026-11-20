@@ -8,4 +8,4 @@ mkdir -p "$RADIATION_DATA_DIR"
 git -C "$APP_DIR" pull --ff-only origin main
 cd "$APP_DIR"
 export RADIATION_DATA_DIR
-docker compose -f compose.yaml run --rm radiation-archive cities
+docker compose -f compose.yaml run --build --rm radiation-archive cities
