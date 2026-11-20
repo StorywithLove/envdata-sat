@@ -1,0 +1,10 @@
+services:
+  radiation-archive:
+    build:
+      context: .
+      dockerfile: deploy/oci/Dockerfile
+    image: envdata-sat-archive:latest
+    container_name: envdata-sat-archive
+    volumes:
+      - ${RADIATION_DATA_DIR:-./data}:/app/data
+    restart: "no"
