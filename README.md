@@ -14,4 +14,4 @@ Responsibilities are separated across repositories:
 
 See [README_PLATFORM.md](README_PLATFORM.md) for the current architecture, data semantics, workflows, output layout, and local usage.
 
-The remainder of this README preserves background notes from the original single-site Himawari prototype. Those notes describe historical implementation context and should not be interpreted as the current storage/deployment architecture.
+Historical prototype details are available in the repository's earlier commits.
