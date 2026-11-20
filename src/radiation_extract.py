@@ -54,6 +54,9 @@ def validate_native_cadence(times: list[str], strict_10min: bool) -> list[int]:
 def fetch_location(
     location: dict[str, Any], start: date, end: date, model: str,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    strict_10min = model == "jma_jaxa_himawari"
+    daily_city_window = strict_10min and start == end
+    api_end = end + timedelta(days=1) if daily_city_window else end
     params = {
         "latitude": location["latitude"],
         "longitude": location["longitude"],
@@ -61,7 +64,7 @@ def fetch_location(
         "models": model,
         "temporal_resolution": "native",
         "start_date": start.isoformat(),
-        "end_date": end.isoformat(),
+        "end_date": api_end.isoformat(),
         "timezone": "UTC",
     }
     response = requests.get(API_URL, params=params, timeout=90)
@@ -75,15 +78,21 @@ def fetch_location(
             f"{location['station_id']}: invalid API arrays "
             f"(times={len(times)}, values={len(values)})"
         )
-    strict_10min = model == "jma_jaxa_himawari"
+    if daily_city_window:
+        day_start = datetime.combine(start, datetime.min.time(), tzinfo=timezone.utc)
+        day_end = day_start + timedelta(days=1)
+        selected = [
+            (timestamp, value) for timestamp, value in zip(times, values)
+            if day_start < datetime.fromisoformat(timestamp.replace("Z", "+00:00")).astimezone(timezone.utc) <= day_end
+        ]
+        times = [item[0] for item in selected]
+        values = [item[1] for item in selected]
+        first = datetime.fromisoformat(times[0].replace("Z", "+00:00")).astimezone(timezone.utc) if times else None
+        last = datetime.fromisoformat(times[-1].replace("Z", "+00:00")).astimezone(timezone.utc) if times else None
+        expected_first = day_start + timedelta(minutes=10)
+        if len(times) != 144 or first != expected_first or last != day_end:
+            raise ValueError("{}: expected 144 backward-averaged labels from {} to {}; received {} from {} to {}".format(location["station_id"], expected_first.isoformat(), day_end.isoformat(), len(times), first.isoformat() if first else "none", last.isoformat() if last else "none"))
     cadences = validate_native_cadence(times, strict_10min=strict_10min)
-    if strict_10min and start == end:
-        expected_start = datetime.combine(start, datetime.min.time(), tzinfo=timezone.utc)
-        expected_last = expected_start + timedelta(minutes=1430)
-        first = datetime.fromisoformat(times[0].replace("Z", "+00:00")).replace(tzinfo=timezone.utc)
-        last = datetime.fromisoformat(times[-1].replace("Z", "+00:00")).replace(tzinfo=timezone.utc)
-        if len(times) != 144 or first != expected_start or last != expected_last:
-            raise ValueError("{}: expected 144 timestamps, received {} from {} to {}".format(location["station_id"], len(times), first.isoformat(), last.isoformat()))
     actual_model = payload.get("model") or model
     rows = []
     for timestamp, value, cadence in zip(times, values, cadences):
@@ -110,6 +119,9 @@ def fetch_location(
         "valid_records": sum(row["ghi_wm2"] != "" for row in rows),
         "cadences_seconds": sorted(set(cadences)),
         "actual_model": actual_model,
+        "temporal_semantics": "backward_average_interval_end" if daily_city_window else "provider_native_timestamp_semantics_not_normalized",
+        "period_start_utc": start.isoformat(),
+        "period_end_utc": end.isoformat(),
     }
     return rows, summary
 
