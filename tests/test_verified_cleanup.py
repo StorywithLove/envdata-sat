@@ -46,7 +46,7 @@ class VerifiedCleanupTests(unittest.TestCase):
         self.temp.cleanup()
 
     def test_complete_matching_manifest_removes_all_month_files(self):
-        removed = cleanup_month(self.month, self.manifest_path, self.data_root)
+        removed = cleanup_month(self.month, self.manifest_path, self.data_root, today=date(2027, 4, 1))
         self.assertEqual(len(removed), 56)
         self.assertEqual(list(self.source_dir.iterdir()), [])
 
