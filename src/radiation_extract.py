@@ -12,7 +12,7 @@ import argparse
 import csv
 import json
 import logging
-import statistics
+import math
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timedelta, timezone
@@ -75,7 +75,15 @@ def fetch_location(
             f"{location['station_id']}: invalid API arrays "
             f"(times={len(times)}, values={len(values)})"
         )
-    cadences = validate_native_cadence(times, strict_10min=(model == "jma_jaxa_himawari"))
+    strict_10min = model == "jma_jaxa_himawari"
+    cadences = validate_native_cadence(times, strict_10min=strict_10min)
+    if strict_10min and start == end:
+        expected_start = datetime.combine(start, datetime.min.time(), tzinfo=timezone.utc)
+        expected_last = expected_start + timedelta(minutes=1430)
+        first = datetime.fromisoformat(times[0].replace("Z", "+00:00")).replace(tzinfo=timezone.utc)
+        last = datetime.fromisoformat(times[-1].replace("Z", "+00:00")).replace(tzinfo=timezone.utc)
+        if len(times) != 144 or first != expected_start or last != expected_last:
+            raise ValueError("{}: expected 144 timestamps, received {} from {} to {}".format(location["station_id"], len(times), first.isoformat(), last.isoformat()))
     actual_model = payload.get("model") or model
     rows = []
     for timestamp, value, cadence in zip(times, values, cadences):
@@ -126,7 +134,7 @@ def load_coordinates(path: Path) -> list[dict[str, Any]]:
         locations = []
         for index, raw in enumerate(reader, start=1):
             lat, lon = float(raw["latitude"]), float(raw["longitude"])
-            if not -90 <= lat <= 90 or not -180 <= lon <= 180:
+            if not math.isfinite(lat) or not math.isfinite(lon) or not -90 <= lat <= 90 or not -180 <= lon <= 180:
                 raise ValueError(f"Coordinate row {index}: latitude/longitude out of range")
             station_id = (raw.get("station_id") or f"point_{index:03d}").strip()
             locations.append({
