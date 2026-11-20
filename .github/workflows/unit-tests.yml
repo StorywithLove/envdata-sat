@@ -27,5 +27,6 @@ jobs:
           python-version: "3.11"
       - name: Install dependencies
         run: python -m pip install --upgrade pip requests
+      # Includes extraction cadence, hourly CSV upserts, and manifest-gated archive cleanup tests.
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
