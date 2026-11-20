@@ -20,7 +20,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: satellite-radiation-collection
+  group: radiation-daily-archive
   cancel-in-progress: false
 
 jobs:
@@ -69,8 +69,17 @@ jobs:
             exit 0
           fi
           git commit -m "Archive satellite radiation for ${{ steps.archive-date.outputs.date }}"
-          git pull --rebase origin main
-          git push origin HEAD:main
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git rebase origin/main
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            echo "Push raced with another writer; retrying ($attempt/5)."
+            sleep $((attempt * 2))
+          done
+          echo "Unable to push daily archive after 5 attempts."
+          exit 1
       - name: Upload selected daily CSV and quality report (30-day convenience copy)
         if: always()
         uses: actions/upload-artifact@v4
