@@ -1,0 +1,28 @@
+name: Probe live satellite API modes
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "src/probe_satellite_api.py"
+      - ".github/workflows/probe-live-api.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install requests
+      - run: python src/probe_satellite_api.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: satellite-api-probe
+          path: probe.json
+          retention-days: 14
