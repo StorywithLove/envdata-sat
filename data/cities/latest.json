@@ -1,8 +1,8 @@
 {
-  "generated_at_utc": "2026-11-22T15:05:00Z",
+  "generated_at_utc": "2026-11-22T16:05:00Z",
   "window_start_utc": "2026-11-19T00:10:00Z",
   "window_end_utc": "2026-11-19T23:00:00Z",
-  "data_lag_hours": 64.1,
+  "data_lag_hours": 65.1,
   "provider": "Open-Meteo Satellite Radiation API",
   "variable": "shortwave_radiation",
   "unit": "W/m²",
