@@ -31,6 +31,11 @@ SNAPSHOT_STATUS_FILE = CITY_DIR / "status.json"
 LOG = logging.getLogger("hourly-radiation-collector")
 MODEL = "jma_jaxa_himawari"
 
+# The dashboard always shows the newest data that actually exists, so it stays
+# useful through a multi-day provider outage. Look back far enough to cover one,
+# then anchor the 24-hour window on the latest published value.
+DASHBOARD_LOOKBACK_DAYS = 14
+
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc).replace(second=0, microsecond=0)
@@ -85,6 +90,11 @@ def has_valid_values(rows: list[dict[str, Any]]) -> bool:
 def is_day_complete(day: date, cities: list[dict[str, Any]]) -> bool:
     csv_path, status_path = daily_paths(day)
     rows = read_csv(csv_path)
+    # An all-null file must never count as complete: the provider can publish a
+    # full set of empty intervals, and without this gate the day would be frozen
+    # as "done" and never re-fetched once the real values arrive.
+    if not has_valid_values(rows):
+        return False
     if not status_path.is_file():
         return False
     try:
@@ -245,8 +255,20 @@ def main() -> None:
                 if earliest_refresh < parse_utc_timestamp(row["time_utc"]) <= latest_completed
             ]
         if not has_valid_values(fetched):
-            # An all-null day must never be persisted. It would later satisfy the
-            # 144-row completeness check and be frozen without any real values.
+            # An all-null day must never be persisted as a CSV: it would later
+            # satisfy the 144-row completeness check and be frozen without any
+            # real values. Record a status-only marker instead, so "the provider
+            # had nothing" stays distinguishable from "the job never ran".
+            if not has_valid_values(existing):
+                atomic_json(status_path, {
+                    "date": day.isoformat(),
+                    "data_available": False,
+                    "reason": "provider_all_null",
+                    "records": 0,
+                    "valid_records": 0,
+                    "provider_failures": len(failures),
+                    "generated_at_utc": now.isoformat().replace("+00:00", "Z"),
+                })
             LOG.warning("Provider published no values for %s; preserving any existing files", day)
             last_blocker = f"provider returned only nulls for {day} ({len(failures)} request failures)"
             continue
@@ -276,7 +298,7 @@ def main() -> None:
     # now-anchored window silently truncates the curve while still claiming
     # "last 24 hours".
     source: list[dict[str, Any]] = []
-    for offset in (2, 1, 0):
+    for offset in range(DASHBOARD_LOOKBACK_DAYS - 1, -1, -1):
         day = today - timedelta(days=offset)
         csv_path, _ = daily_paths(day)
         source.extend(all_daily_rows.get(day) or read_csv(csv_path))

@@ -80,6 +80,43 @@ function selectCity(city, rows) {
 }
 function render(payload) {
   const rows = payload.records || [];
+  const stamp = payload.generated_at_utc ? new Date(payload.generated_at_utc).toLocaleString("zh-CN") : "未知";
+  windowEnd = payload.window_end_utc || null;
+  lagHours = payload.data_lag_hours == null ? null : Number(payload.data_lag_hours);
+  const windowText = payload.window_start_utc && payload.window_end_utc
+    ? `窗口：${fmtTime(payload.window_start_utc)} → ${fmtTime(payload.window_end_utc)}（数据滞后 ${lagHours == null ? "未知" : lagHours.toFixed(1)} 小时）；`
+    : "";
+  const banner = document.getElementById("banner");
+
+  // Upstream can stop publishing for days (every point comes back null). The
+  // payload is then valid but empty, and rendering it leaves a blank map that
+  // reads as "the site is broken". Say what actually happened instead.
+  if (!rows.length) {
+    if (banner) {
+      banner.hidden = false;
+      banner.textContent =
+        "数据源暂停：上游卫星辐射接口在这个窗口内只返回空值，当前没有可展示的观测。" +
+        "这不是本站故障——采集任务仍在每小时运行，上游恢复发布后本页会自动更新，无需人工干预。";
+    }
+    document.getElementById("selected-title").textContent = "暂无有效观测";
+    document.getElementById("selected-meta").textContent = `快照更新时间：${stamp}。`;
+    document.getElementById("status").textContent = `${windowText}快照更新时间：${stamp}；有效城市：0 / 31；数据点：0。`;
+    return;
+  }
+  if (banner) {
+    // A lag over a day means the provider stopped publishing; the chart below is
+    // the most recent data that exists, not today's. Say so instead of letting
+    // the timestamp speak for itself.
+    if (lagHours != null && lagHours > 24) {
+      banner.hidden = false;
+      banner.textContent =
+        `上游卫星辐射接口已约 ${Math.round(lagHours)} 小时未发布新数据，当前展示的是最近一次有效数据（截至 ${fmtTime(windowEnd)}）。` +
+        "采集任务仍在每小时运行，上游恢复后本页会自动更新，无需人工干预。";
+    } else {
+      banner.hidden = true;
+    }
+  }
+
   const latest = new Map();
   for (const row of rows) {
     if (row.ghi_wm2 == null) continue;
@@ -104,12 +141,6 @@ function render(payload) {
     button.append(name,value);button.addEventListener("click",()=>{map.setView([city.latitude,city.longitude],6);selectCity(city,rows);});
     list.append(button);
   });
-  const stamp=payload.generated_at_utc ? new Date(payload.generated_at_utc).toLocaleString("zh-CN") : "未知";
-  windowEnd = payload.window_end_utc || null;
-  lagHours = payload.data_lag_hours == null ? null : Number(payload.data_lag_hours);
-  const windowText = payload.window_start_utc && payload.window_end_utc
-    ? `窗口：${fmtTime(payload.window_start_utc)} → ${fmtTime(payload.window_end_utc)}（数据滞后 ${lagHours == null ? "未知" : lagHours.toFixed(1)} 小时）；`
-    : "";
   document.getElementById("status").textContent=`${windowText}快照更新时间：${stamp}；有效城市：${latest.size} / 31；数据点：${rows.length}`;
   const first=latest.get("wuhan") || latest.values().next().value;
   if(first) selectCity(first,rows);
